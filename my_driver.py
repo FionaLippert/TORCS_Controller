@@ -1,6 +1,8 @@
 from pytocl.driver import Driver
 from pytocl.car import State, Command
 import torch
+from torch.autograd import Variable
+import neuralNet
 
 class MyDriver(Driver):
 
@@ -28,8 +30,7 @@ class MyDriver(Driver):
         if carstate.rpm > 8000:
             command.gear = carstate.gear + 1
         elif carstate.rpm < 2500:
-            command.gear = carstate.gear - 1
-
+            command.gear = max(1, carstate.gear - 1)
         if not command.gear:
             command.gear = carstate.gear or 1
 
@@ -40,9 +41,18 @@ class MyDriver(Driver):
         and Steering command
         """
 
-        accel = 1.0
-        brake = 0.0
-        steer = 0.0
+        sensor_data = [sensor_SPEED, sensor_TRACK_POSITION, sensor_ANGLE_TO_TRACK_AXIS]
+        sensor_data += list(sensor_TRACK_EDGES)
+
+        inputs = Variable(torch.FloatTensor(sensor_data))
+        # print(inputs.size())
+        output = neuralNet.restore_net_and_predict(inputs)
+
+        # print(output.data[0])
+
+        accel = output.data[0]
+        brake = output.data[1]
+        steer = output.data[2]
 
 
 
