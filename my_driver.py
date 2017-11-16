@@ -4,6 +4,7 @@ import torch
 from torch.autograd import Variable
 import neuralNet
 
+
 class MyDriver(Driver):
 
     def drive(self, carstate: State):
@@ -64,5 +65,8 @@ class MyDriver(Driver):
         command.accelerator = accel
         command.brake = brake
         command.steering = steer
+
+        if self.data_logger:
+            self.data_logger.log(carstate, command)
 
         return command
