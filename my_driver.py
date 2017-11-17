@@ -1,3 +1,4 @@
+import math
 from pytocl.driver import Driver
 from pytocl.car import State, Command
 import torch
@@ -16,9 +17,9 @@ class MyDriver(Driver):
         Track Edges
         """
 
-        sensor_SPEED = carstate.speed_x # * 3600 / 1000  # Convert from MPS to KPH
+        sensor_SPEED = carstate.speed_x * 3600 / 1000  # Convert from MPS to KPH
         sensor_TRACK_POSITION = carstate.distance_from_center
-        sensor_ANGLE_TO_TRACK_AXIS = carstate.angle
+        sensor_ANGLE_TO_TRACK_AXIS = carstate.angle * math.pi / 180
         sensor_TRACK_EDGES = carstate.distances_from_edge
 
         """
@@ -48,7 +49,11 @@ class MyDriver(Driver):
         # print(inputs.size())
         output = neuralNet.restore_net_and_predict(inputs)
 
-        # print(output.data[0])
+        print("\033c")
+        print('Speed: %.2f, Track Position: %.2f, Angle to Track: %.2f\n'%(sensor_data[0], sensor_data[1], sensor_data[3]))
+        print('Accelrator: %.2f, Brake: %.2f, Steering: %.2f\n'%(output.data[0], output.data[1], output.data[2]))
+        print('Field View:')
+        print(sensor_data[3:])
 
         accel = output.data[0]
         brake = output.data[1]
