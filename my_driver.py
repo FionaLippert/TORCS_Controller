@@ -21,6 +21,7 @@ class MyDriver(Driver):
         sensor_TRACK_POSITION = carstate.distance_from_center
         sensor_ANGLE_TO_TRACK_AXIS = carstate.angle * math.pi / 180
         sensor_TRACK_EDGES = carstate.distances_from_edge
+        # sensor_RPM = carstate.rpm
 
         """
         Automatic Transmission.
@@ -50,7 +51,7 @@ class MyDriver(Driver):
         output = neuralNet.restore_net_and_predict(inputs)
 
         print("\033c")
-        print('Speed: %.2f, Track Position: %.2f, Angle to Track: %.2f\n'%(sensor_data[0], sensor_data[1], sensor_data[3]))
+        print('Speed: %.2f, Track Position: %.2f, Angle to Track: %.2f\n'%(sensor_data[0], sensor_data[1], sensor_data[2]))
         print('Accelrator: %.2f, Brake: %.2f, Steering: %.2f\n'%(output.data[0], output.data[1], output.data[2]))
         print('Field View:')
         print(sensor_data[3:])
@@ -58,7 +59,7 @@ class MyDriver(Driver):
         accel = output.data[0]
         brake = output.data[1]
         steer = output.data[2]
-
+        # gear_change = output.data[3]
 
 
 
@@ -69,5 +70,6 @@ class MyDriver(Driver):
         command.accelerator = accel
         command.brake = brake
         command.steering = steer
+        # command.gear = gear_change
 
         return command
