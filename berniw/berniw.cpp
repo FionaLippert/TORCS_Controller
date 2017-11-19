@@ -450,7 +450,7 @@ static void drive(int index, tCarElt* car, tSituation *situation)
 
 
 	ofstream file;
-	file.open("/home/student/Documents/torcs-server/torcs-1.3.7-patched/src/drivers/berniw/data.csv", ios::app);
+	file.open("../torcs-1.3.7-patched/src/drivers/berniw/data.csv", ios::app);
 	// Car's commands:
 	// Accelerator, Brake, Steering, Gear
 	file << float(car->_accelCmd) << "," << float(car->_brakeCmd) << "," << float(car->_steerCmd) << ","; // << car->_gearCmd << ",";
