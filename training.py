@@ -2,38 +2,43 @@
 
 import sys
 import neuralNet
+from neuralNet import EchoStateNet as ESN
+from neuralNet import MultiLayerPerceptron as MLP
 
-PATH_TO_TRAINING_DATA = "../train_data/data.csv"
-STORAGE_PATH = "./trained_nn/net.pkl"
 
 """
 train a neural net with the given training data (as .csv file)
 save the trained net at the given location
 
 run the script in the terminal in the following way:
-python training.py ../train_data/aalgorg.csv ./trained_nn/my_net.pkl [./trained_nn/net.pkl]
+python training.py esn ../train_data/aalgorg.csv ./trained_nn/my_net.pkl [./trained_nn/net.pkl]
 
-    - if the third argument is given, the corresponding trained network is used as starting point for parameter training
-    - if no arguments are given, the default paths will be used
+    - the first argument specifies the network type to use. esn: echo state network, mlp: multi layer perceptron
+    - if the 4th argument is given, the corresponding trained network is used as starting point for parameter training
+
 """
 
-#
-if len(sys.argv)>=3:
 
-    input_data, target_data = neuralNet.load_training_data(sys.argv[1])
-    print("Training data loaded from " + sys.argv[1])
+esn = True if sys.argv[1] == "esn" else False
 
-    storage_path = sys.argv[2]
-    if len(sys.argv)==4:
-        neuralNet.train(input_data, target_data, sys.argv[2], sys.argv[3])
+input_data, target_data = neuralNet.load_training_data(sys.argv[2])
+D_in = len(input_data[0])
+D_out = len(target_data[0])
+print("Training data loaded from " + sys.argv[2])
+
+if esn:
+    net = ESN(D_in,D_out)
+else:
+    net = MLP(D_in,D_in,D_out)
+
+if len(sys.argv)>=4:
+
+    if esn==False and len(sys.argv)==5:
+        net.train(input_data, target_data, sys.argv[3], sys.argv[4])
         print("Initial network state loaded from " + sys.argv[3])
     else:
-        neuralNet.train(input_data, target_data, sys.argv[2])
-    print("Neural net trained and saved to " + sys.argv[2])
+        net.train(input_data, target_data, sys.argv[3])
+    print("Neural net trained and saved to " + sys.argv[3])
 
-else:
-
-    input_data, target_data = neuralNet.load_training_data(PATH_TO_TRAINING_DATA)
-    print("Training data loaded from " + PATH_TO_TRAINING_DATA)
-    neuralNet.train(input_data, target_data, STORAGE_PATH)
-    print("Neural net trained and saved to " + STORAGE_PATH)
+    if esn:
+        neuralNet.restore_ESN_and_predict(input_data, sys.argv[3])
