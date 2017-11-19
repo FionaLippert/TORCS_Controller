@@ -7,6 +7,8 @@ import neuralNet
 
 class MyDriver(Driver):
 
+    PATH_TO_NEURAL_NET = "../net.pkl"
+
     def drive(self, carstate: State):
         command = Command()
 
@@ -48,7 +50,7 @@ class MyDriver(Driver):
 
         inputs = Variable(torch.FloatTensor(sensor_data))
         # print(inputs.size())
-        output = neuralNet.restore_net_and_predict(inputs)
+        output = neuralNet.restore_net_and_predict(inputs, PATH_TO_NEURAL_NET)
 
         print("\033c")
         print('Speed: %.2f, Track Position: %.2f, Angle to Track: %.2f\n'%(sensor_data[0], sensor_data[1], sensor_data[2]))

@@ -5,25 +5,8 @@ import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 
-# load training data
-training_data = pd.read_csv("../train_data/aalborg.csv",index_col=False)
-
-# use the first 3 columns as target data, and the rest as input data
-# delete the last row because some values are missing
-#input_data = training_data.iloc[:,3::].values[:-1,:]
-#target_data = training_data.iloc[:,0:3].values[:-1,:]
-
-# use only part of the dataset for training (here: time points 100 to 499)
-input_data = training_data.iloc[100:500,3::].values
-target_data = training_data.iloc[100:500,0:3].values
-
-# use another part of the dataset for testing (here: time points 500 to 999)
-test_input_data = torch.FloatTensor(training_data.iloc[500:1000,3::].values)
-test_target_data = torch.FloatTensor(training_data.iloc[100:1000,0:3].values)
-
-# convert input and target output to Tensors
-input_data = torch.FloatTensor(input_data)
-target_data = torch.FloatTensor(target_data)
+LEARNING_RATE = 1e-5
+TRAINING_ITERATIONS = 1000
 
 
 #class Net(torch.nn.Module):
@@ -37,14 +20,45 @@ target_data = torch.FloatTensor(target_data)
 #        x = self.predict(x)             # linear output
 #        return x
 
+"""
+load training data from the .csv file at the given location 'path_to_data'
+if the file contains incomplete rows, these are ignored
+RETURN input data and target output data as Tensors
+"""
+def load_training_data(path_to_data):
 
-def train_and_save_nn(input_data, target_data):
+    # read csv file
+    training_data = pd.read_csv(path_to_data,index_col=False)
 
-    # D_in is input dimension;
-    # D_h is hidden dimension;
-    # D_out is output dimension.
+    # split training dataframe into input and target output data
+    # use the first 3 columns as target data, and the rest as input data
+    input_data = training_data.iloc[:,3::]
+    target_data = training_data.iloc[:,0:3]
+
+    # check for missing values (nan entries) and delete detected rows
+    nan_rows_input = input_data.isnull().any(1)
+    nan_rows_target = target_data.isnull().any(1)
+    nan_rows = np.where(np.logical_or(nan_rows_input,nan_rows_target))[0]
+    input_data = input_data.drop(nan_rows)
+    target_data = target_data.drop(nan_rows)
+
+    # convert input and target output to Tensors
+    input_data = torch.FloatTensor(input_data.values)
+    target_data = torch.FloatTensor(target_data.values)
+
+    return [input_data, target_data]
+
+"""
+train a 3 layer neural net with the given training data 'input_data' and 'target_data'
+save the final model at the given location 'storage_path'
+"""
+def train(input_data, target_data, storage_path):
+
+    # input dimension
     D_in = input_data.size(1)
+    # hidden layer dimension
     D_h = D_in
+    # output dimension
     D_out = target_data.size(1)
 
     # if using the nn.Module network
@@ -54,8 +68,7 @@ def train_and_save_nn(input_data, target_data):
     net = torch.nn.Sequential(
     torch.nn.Linear(D_in, D_h),
     torch.nn.Tanh(),
-    torch.nn.Linear(D_h, D_out),
-)
+    torch.nn.Linear(D_h, D_out),)
 
     # wrap inputs and outputs in variables
     x, y = Variable(input_data), Variable(target_data)
@@ -63,18 +76,17 @@ def train_and_save_nn(input_data, target_data):
     # use Mean Squared Error (MSE) as loss function.
     loss_func = torch.nn.MSELoss(size_average=False)
 
-    # set learning rate and optimization algorithm (here: gradient descent)
-    learning_rate = 1e-5
-    opt = torch.optim.SGD(net.parameters(), lr=learning_rate)
+    # set optimization algorithm (here: gradient descent)
+    opt = torch.optim.SGD(net.parameters(), lr=LEARNING_RATE)
 
-    for t in range(1000):
+    for t in range(TRAINING_ITERATIONS):
 
         # Forward pass: compute predicted y by passing x to the model
         y_pred = net(x)
 
         # Compute loss
         loss = loss_func(y_pred, y)
-        print(loss)
+        #print(loss)
 
         # Zero the gradients before running the backward pass
         opt.zero_grad()
@@ -87,28 +99,25 @@ def train_and_save_nn(input_data, target_data):
         opt.step()
 
 
-    # 2 ways to save the net
-    torch.save(net, 'net.pkl')  # save entire net
-    torch.save(net.state_dict(), 'net_params.pkl') # save only the parameters
+    # save the trained net
+    torch.save(net, storage_path)  # save entire net
+    #torch.save(net.state_dict(), 'net_params.pkl') # save only the parameters
 
-
-def restore_net_and_predict(input):
+"""
+restore a previously trained neural net that has been saved at 'path_to_trained_net'
+and apply it to the given input data
+RETURN the resulting predictions
+"""
+def restore_net_and_predict(input,path_to_trained_net):
 
     # restore the entire neural net
-    net = torch.load('net.pkl')
+    net = torch.load(path_to_trained_net)
 
     # print the learned parameters
     #for param in net.parameters():
-        #print(param.data, param.size())
+    #    print(param.data, param.size())
 
     # predict output for the given input
     prediction = net(input)
 
     return prediction
-
-train_and_save_nn(input_data,target_data)
-
-sample_index = 0
-prediction = restore_net_and_predict(Variable(test_input_data[sample_index]))
-print prediction
-print(test_target_data[sample_index])
