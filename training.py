@@ -41,4 +41,4 @@ if len(sys.argv)>=4:
     print("Neural net trained and saved to " + sys.argv[3])
 
     if esn:
-        neuralNet.restore_ESN_and_predict(input_data, sys.argv[3])
+        net.predict(input_data[0])

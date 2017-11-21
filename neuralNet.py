@@ -49,8 +49,8 @@ class EchoStateNet():
     sparsity: ratio of zero entries in the reservoir weight matrix
     teacher_forcing: use feedback from the previous output?
     """
-    def __init__(self, D_in, D_out, D_reservoir=200,
-                 spectral_radius=0.95, sparsity=0.8, teacher_forcing=True):
+    def __init__(self, D_in, D_out, D_reservoir=500,
+                 spectral_radius=0.9, sparsity=0.8, teacher_forcing=True):
 
         # check for proper dimensionality of all arguments and write them down.
         self.D_in = D_in
@@ -138,7 +138,7 @@ class EchoStateNet():
         extended_states = np.concatenate((inputs, states), axis=0)
 
         # ignore the first t_0 time steps (wash out time) for the computation of output weights
-        wash_out = 100 # HOW LARGE SHOULD THIS BE????
+        wash_out = 10 # HOW LARGE SHOULD THIS BE????
 
         # determine W_out by solving the system w_out*extended_states = target_output
         # use the Moore-Penrose pseudoinverse of extended_states
@@ -151,9 +151,9 @@ class EchoStateNet():
         #self.lastinput = inputs[:,-1]
         #self.lastoutput = target_outputs[:,-1]
 
-        self.laststate = np.zeros(self.D_reservoir)
-        self.lastinput = np.zeros(self.D_in)
-        self.lastoutput = np.zeros(self.D_out)
+        self.laststates = np.zeros((self.D_reservoir,50))
+        self.lastinputs = np.zeros((self.D_in,50))
+        self.lastoutputs = np.zeros((self.D_out,50))
 
         # apply learned weights to the collected states and report the mean squared error
         pred_train = np.dot(self.w_out, extended_states)
@@ -184,42 +184,45 @@ class EchoStateNet():
             batch_size = inputs.shape[1]
         else:
             batch_size = 1
-        print(inputs.shape)
 
         if continuation:
-            laststate = self.laststate
-            lastinput = self.lastinput
-            lastoutput = self.lastoutput
+            laststates = self.laststates
+            lastinputs = self.lastinputs
+            lastoutputs = self.lastoutputs
         else:
-            laststate = np.zeros(self.D_reservoir)
-            lastinput = np.zeros(self.D_in)
-            lastoutput = np.zeros(self.D_out)
+            laststates = np.zeros((self.D_reservoir,50))
+            lastinputs = np.zeros((self.D_in,50))
+            lastoutputs = np.zeros((self.D_out,50))
 
         if batch_size > 1:
-            inputs = np.concatenate((lastinput[:,None], inputs),axis=1)
+            inputs = np.concatenate((lastinputs, inputs),axis=1)
+            #inputs = np.concatenate((lastinput[:,None], inputs),axis=1)
         else:
-            inputs = np.stack((lastinput, inputs),axis=-1)
-            print(inputs.shape)
-        states = np.concatenate((laststate[:,None], np.zeros((self.D_reservoir, batch_size))),axis=1)
-        outputs = np.concatenate((lastoutput[:,None], np.zeros((self.D_out, batch_size))),axis=1)
+            inputs = np.concatenate((lastinputs, inputs[:,None]),axis=1)
+            #inputs = np.stack((lastinput, inputs),axis=-1)
+        #states = np.concatenate((laststate[:,None], np.zeros((self.D_reservoir, batch_size))),axis=1)
+        #outputs = np.concatenate((lastoutput[:,None], np.zeros((self.D_out, batch_size))),axis=1)
+        states = np.concatenate((laststates, np.zeros((self.D_reservoir, batch_size))),axis=1)
+        outputs = np.concatenate((lastoutputs, np.zeros((self.D_out, batch_size))),axis=1)
 
 
         for n in range(batch_size):
-            states[:,n+1] = self._next_states(states[:,n], inputs[:,n+1], outputs[:,n])
-            outputs[:,n+1] = np.dot(self.w_out, np.concatenate((inputs[:,n+1], states[:,n+1])))
+            states[:,n+50] = self._next_states(states[:,n+49], inputs[:,n+50], outputs[:,n+49])
+            outputs[:,n+50] = np.dot(self.w_out, np.concatenate((inputs[:,n+50], states[:,n+50])))
 
         # save last values to use them as starting point for the next prediction
         if continuation:
-            self.laststate = states[:,-1]
-            self.lastinput = inputs[:,-1]
-            self.lastoutput = outputs[:,-1]
+            self.laststates = states[:,-50:]
+            self.lastinputs = inputs[:,-50:]
+            self.lastoutputs = outputs[:,-50:]
 
         if storage_path is not None:
             # save the trained network
             with open(storage_path, 'wb') as file:
+                print(self)
                 pkl.dump(self,file)
 
-        return outputs[:,1:]
+        return outputs[:,-batch_size:]
 
 """
 load EchoStateNet object from .pkl file and use it to predict outputs

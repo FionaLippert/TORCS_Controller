@@ -64,9 +64,9 @@ class MyDriver(Driver):
         print('Field View:')
         print(sensor_data[3:])
 
-        accel = output[0]
-        brake = output[1]
-        steer = output[2]
+        accel = min(max(output[0],0),1)
+        brake = min(max(output[1],0),1)
+        steer = min(max(output[2],-1),1)
         # gear_change = output.data[3]
 
 
