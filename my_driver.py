@@ -8,7 +8,9 @@ from pytocl.controller import CompositeController, ProportionalController, \
 import torch
 from torch.autograd import Variable
 import neuralNet
+from pca import PCA
 import pandas as pd
+import numpy as np
 import os.path
 import time
 from sys import stdout
@@ -18,6 +20,7 @@ class MyDriver(Driver):
     def drive(self, carstate: State):
 
         use_simple_driver = False
+        use_pca = False
 
         command = Command()
 
@@ -54,8 +57,8 @@ class MyDriver(Driver):
         and Steering command
         """
 
-        sensor_data = [sensor_SPEED, sensor_TRACK_POSITION, sensor_ANGLE_TO_TRACK_AXIS]
-        sensor_data += list(sensor_TRACK_EDGES)
+        sensor_data = [min(sensor_SPEED, 300)/300, sensor_TRACK_POSITION, sensor_ANGLE_TO_TRACK_AXIS]
+        # sensor_data += list(sensor_TRACK_EDGES)
 
         #inputs = Variable(torch.FloatTensor(sensor_data))
         # print(inputs.size())
@@ -97,42 +100,55 @@ class MyDriver(Driver):
 
 
         else:
-
-
-
             if np.abs(sensor_TRACK_POSITION) > 1:
                 # Off track, steer back into track with 0.0 accel (i.e. use momentum)
 
-                output = returnToTrack(sensor_ANGLE_TO_TRACK_AXIS)
+                output = self.returnToTrack(sensor_ANGLE_TO_TRACK_AXIS)
 
                 print("### OFF ROAD ###")
 
             else:
 
-                PATH_TO_NEURAL_NET = "./trained_nn/esn.pkl"
+                PATH_TO_NEURAL_NET = "./trained_nn/mlp_good.pkl"
+                if use_pca:
+                    PATH_TO_NEURAL_NET = "./trained_nn/mlp_pca.pkl"
 
+                # translate range data into PCA
+
+                # pca_weights = np.load('./trained_nn/pca.npy')
+                # print("loaded weights")
+
+                x = np.array(sensor_TRACK_EDGES) / 200
+                if use_pca:
+                    y = PCA.convert(x.T)
+                    sensor_data += list(y)
+                    print(sensor_data)
+                else:
+                    sensor_data += list(x)
 
                 # use MultiLayerPerceptron
-                #output = neuralNet.restore_MLP_and_predict(sensor_data, PATH_TO_NEURAL_NET)
-                # use EchoStateNet
-
-                t = time.time()
-                #output = neuralNet.restore_ESN_and_predict(sensor_data, PATH_TO_NEURAL_NET,continuation=True)
-                try:
-                    output = self.esn.predict(sensor_data,continuation=True)
-                    print('esn already loaded')
-                except:
-                    self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
-                    output = self.esn.predict(sensor_data,continuation=True)
-                    print('load esn')
-                print('total time: '+str(time.time()-t))
+                output = neuralNet.restore_MLP_and_predict(sensor_data, PATH_TO_NEURAL_NET)
 
                 print(output)
+                # use EchoStateNet
+
+                # t = time.time()
+                # #output = neuralNet.restore_ESN_and_predict(sensor_data, PATH_TO_NEURAL_NET,continuation=True)
+                # try:
+                #     output = self.esn.predict(sensor_data,continuation=True)
+                #     print('esn already loaded')
+                # except:
+                #     self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
+                #     output = self.esn.predict(sensor_data,continuation=True)
+                #     print('load esn')
+                # print('total time: '+str(time.time()-t))
+                #
+                # print(output)
 
 
-            accel = min(max(output[0,0],0),1)
-            brake = min(max(output[1,0],0),1)
-            steer = min(max(output[2,0],-1),1)
+            accel = min(max(output[0],0),1)
+            brake = min(max(output[1],0),1)
+            steer = min(max(output[2],-1),1)
             # gear_change = output.data[3]
 
             #print("\033c")
@@ -206,15 +222,15 @@ class MyDriver(Driver):
         command.steering = new_steering
         return new_steering
 
-    def returnToTrack(angle):
+    def returnToTrack(self, angle):
         # returns commands that should bring car back onto the road
         # NEEDS WORK
         target_angle = np.pi / 4
 
-        if sensor_TRACK_POSITION < -1:
+        if angle < -1:
             if (angle < np.pi / 2) & (angle > -target_angle):
                 st = 1
-            else
+            else:
                 st = -1
 
             dif = np.abs(-target_angle - angle)

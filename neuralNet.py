@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import pickle as pkl
 import time
+from pca import PCA
 
 """
 load training data from a .csv file at the given location 'path_to_data'
@@ -19,6 +20,7 @@ Returns:
     input data and target output data as Tensors
 """
 def load_training_data(path_to_data):
+    use_pca = True
 
     # read csv file
     training_data = pd.read_csv(path_to_data,index_col=False)
@@ -26,6 +28,19 @@ def load_training_data(path_to_data):
     # split training dataframe into input and target output data
     # use the first 3 columns as target data, and the rest as input data
     input_data = training_data.iloc[:,3::]
+
+    if use_pca:
+        # if we dcide to use pca, convert range finder data:
+
+        car_data = input_data.iloc[:, 0:3]
+        range_data = input_data.iloc[:, 3:]
+        range_data = PCA.convert(range_data)
+        car_data = pd.DataFrame(car_data)
+        range_data = pd.DataFrame(range_data)
+
+        input_data = pd.concat([car_data, range_data], axis=1)
+
+
     target_data = training_data.iloc[:,0:3]
 
     # check for missing values (nan entries) and delete detected rows
@@ -292,7 +307,7 @@ class MultiLayerPerceptron():
     """
     Constructor
     """
-    def __init__(self, D_in, D_h, D_out, learning_rate=1e-5, n_iterations=1000):
+    def __init__(self, D_in, D_h, D_out, learning_rate=1e-6, n_iterations=20000):
         self.D_in = D_in
         self.D_h = D_h
         self.D_out = D_out
@@ -301,7 +316,7 @@ class MultiLayerPerceptron():
 
         self.net = torch.nn.Sequential(
         torch.nn.Linear(D_in, D_h),
-        torch.nn.Tanh(),
+        torch.nn.Sigmoid(),
         torch.nn.Linear(D_h, D_out),)
 
 
@@ -314,6 +329,12 @@ class MultiLayerPerceptron():
         path_to_initial_net: if given, perform the training starting from the weights of this net, otherwise start with random weights
     """
     def train(self, input_data, target_data, storage_path, path_to_initial_net=None):
+
+        train_pca = False
+
+        if train_pca:
+            print("Training PCA")
+            PCA.train('./trained_nn/data_damned.csv')
 
         # convert input and target output to Tensors
         input_data = torch.FloatTensor(input_data)
@@ -339,7 +360,7 @@ class MultiLayerPerceptron():
         loss_func = torch.nn.MSELoss(size_average=False)
 
         # set optimization algorithm (here: gradient descent)
-        opt = torch.optim.SGD(self.net.parameters(), lr=self.learning_rate)
+        opt = torch.optim.SGD(self.net.parameters(), lr=self.learning_rate, momentum=0.5)
 
         for t in range(self.n_iterations):
 
@@ -348,7 +369,7 @@ class MultiLayerPerceptron():
 
             # Compute loss
             loss = loss_func(y_pred, y)
-            #print(loss)
+            print(loss)
 
             # Zero the gradients before running the backward pass
             opt.zero_grad()
@@ -373,7 +394,7 @@ Args:
 Returns:
     the resulting prediction
 """
-def restore_MLP_and_predict(input,path_to_trained_net):
+def restore_MLP_and_predict(input_data,path_to_trained_net):
 
     # convert input and target output to Tensors
     input_data = Variable(torch.FloatTensor(input_data))
@@ -386,6 +407,6 @@ def restore_MLP_and_predict(input,path_to_trained_net):
     #    print(param.data, param.size())
 
     # predict output for the given input
-    prediction = net(input)
+    prediction = net(input_data)
 
     return prediction.data
