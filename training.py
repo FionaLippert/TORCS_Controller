@@ -11,7 +11,7 @@ train a neural net with the given training data (as .csv file)
 save the trained net at the given location
 
 run the script in the terminal in the following way:
-python training.py esn ../train_data/aalgorg.csv ./trained_nn/my_net.pkl [./trained_nn/net.pkl]
+python training.py esn ../training_data/aalgorg.csv ./trained_nn/my_net.pkl [./trained_nn/net.pkl]
 
     - the first argument specifies the network type to use. esn: echo state network, mlp: multi layer perceptron
     - if the 4th argument is given, the corresponding trained network is used as starting point for parameter training
@@ -27,7 +27,7 @@ D_out = len(target_data[0])
 print("Training data loaded from " + sys.argv[2])
 
 if esn:
-    net = ESN(D_in,D_out)
+    net = ESN(D_in,D_out,teacher_forcing=False)
 else:
     net = MLP(D_in,D_in,D_out)
 
@@ -40,5 +40,5 @@ if len(sys.argv)>=4:
         net.train(input_data, target_data, sys.argv[3])
     print("Neural net trained and saved to " + sys.argv[3])
 
-    if esn:
-        net.predict(input_data[0])
+    #if esn:
+    #    net.predict(input_data[0])
