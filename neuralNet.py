@@ -209,8 +209,6 @@ class EchoStateNet():
     """
     def predict(self, inputs, continuation=True, storage_path=None):
 
-        t0 = time.time()
-
         inputs = np.asarray(inputs)
 
         # assure that inputs are in the right shape
@@ -241,15 +239,10 @@ class EchoStateNet():
         #states = np.concatenate((laststates, np.zeros((self.D_reservoir, batch_size))),axis=1)
         #outputs = np.concatenate((lastoutputs, np.zeros((self.D_out, batch_size))),axis=1)
 
-        t1 = time.time()
-        print('time for initialization: '+str(t1-t0))
 
         for n in range(batch_size):
             states[:,n+1] = self._next_states(states[:,n], inputs[:,n+1], outputs[:,n])
             outputs[:,n+1] = np.tanh(np.dot(self.w_out, np.concatenate((inputs[:,n+1], states[:,n+1]))))
-
-        t2 = time.time()
-        print('time for states and output calculation: '+str(t2-t1))
 
         # save last values to use them as starting point for the next prediction
         if continuation:
@@ -257,13 +250,11 @@ class EchoStateNet():
             self.lastinputs = inputs[:,-1]
             self.lastoutputs = outputs[:,-1]
 
-            if storage_path is not None:
-                # save the trained network
-                with open(storage_path, 'wb') as file:
-                    pkl.dump(self,file)
+            #if storage_path is not None:
+            #    # save the trained network
+            #    with open(storage_path, 'wb') as file:
+            #        pkl.dump(self,file)
 
-            t3 = time.time()
-            print('time for saving states: '+str(t3-t2))
 
         return outputs[:,-batch_size:]
 
@@ -278,11 +269,8 @@ Returns:
 """
 def restore_ESN_and_predict(inputs, path_to_trained_net, continuation=True):
 
-    t0 = time.time()
     with open(path_to_trained_net, 'rb') as file:
         net = pkl.load(file, encoding='latin1')
-        t1=time.time()
-        print('time for loading net: '+str(t1-t0))
         return net.predict(inputs, continuation, storage_path=path_to_trained_net)
 
 
@@ -403,7 +391,7 @@ Args:
 Returns:
     the resulting prediction
 """
-def restore_MLP_and_predict(input,path_to_trained_net):
+def restore_MLP_and_predict(input_data,path_to_trained_net):
 
     # convert input and target output to Tensors
     input_data = Variable(torch.FloatTensor(input_data))
@@ -416,6 +404,6 @@ def restore_MLP_and_predict(input,path_to_trained_net):
     #    print(param.data, param.size())
 
     # predict output for the given input
-    prediction = net(input)
+    prediction = net(input_data)
 
     return prediction.data

@@ -109,7 +109,7 @@ class MyDriver(Driver):
 
             else:
 
-                PATH_TO_NEURAL_NET = "./trained_nn/mlp_good.pkl"
+                PATH_TO_NEURAL_NET = "./trained_nn/mlp.pkl"
                 if use_pca:
                     PATH_TO_NEURAL_NET = "./trained_nn/mlp_pca.pkl"
 
