@@ -19,7 +19,7 @@ class MyDriver(Driver):
 
     def drive(self, carstate: State):
 
-        use_simple_driver = False
+        use_simple_driver = True
         use_pca = False
 
         command = Command()
@@ -36,19 +36,6 @@ class MyDriver(Driver):
         sensor_ANGLE_TO_TRACK_AXIS = carstate.angle * math.pi / 180
         sensor_TRACK_EDGES = carstate.distances_from_edge
         # sensor_RPM = carstate.rpm
-
-        """
-        Automatic Transmission.
-
-        Automatically change gears depending on the engine revs
-        """
-
-        if carstate.rpm > 8000:
-            command.gear = carstate.gear + 1
-        elif carstate.rpm < 2500:
-            command.gear = max(1, carstate.gear - 1)
-        if not command.gear:
-            command.gear = carstate.gear or 1
 
         """
         Process Inputs.
@@ -91,12 +78,7 @@ class MyDriver(Driver):
                 df.to_csv(file_name,header=False,index=False)
 
 
-            print('current_lap_time: '+str(carstate.current_lap_time))
-            if carstate.distance_from_start <= carstate.distance_raced:
-                print('distance_from_start: '+str(carstate.distance_from_start))
-            else:
-                print('distance_from_start: 0')
-            stdout.flush()
+
 
 
         else:
@@ -171,7 +153,27 @@ class MyDriver(Driver):
             command.steering = steer
             # command.gear = gear_change
 
-            print('distance raced: '+str(carstate.distance_raced))
+
+        """
+        Automatic Transmission.
+
+        Automatically change gears depending on the engine revs
+        """
+
+        if carstate.rpm > 8000 and command.accelerator > 0:
+            command.gear = carstate.gear + 1
+        elif carstate.rpm < 2500:
+            command.gear = max(1, carstate.gear - 1)
+        if not command.gear:
+            command.gear = carstate.gear or 1
+
+
+        print('current_lap_time: '+str(carstate.current_lap_time))
+        if carstate.distance_from_start <= carstate.distance_raced:
+            print('distance_from_start: '+str(carstate.distance_from_start))
+        else:
+            print('distance_from_start: 0')
+        stdout.flush()
 
         return command
 
@@ -195,21 +197,13 @@ class MyDriver(Driver):
                 acceleration = min(0.4, acceleration)
 
             new_acceleration = min(acceleration, 1)
-            #command.accelerator = new_acceleration
-            command.accelerator = 0
+            command.accelerator = new_acceleration
 
-            if carstate.rpm > 8000:
-                command.gear = carstate.gear + 1
 
         else:
             new_acceleration = min(-acceleration, 1)
             command.brake = new_acceleration
 
-        if carstate.rpm < 2500:
-            command.gear = carstate.gear - 1
-
-        if not command.gear:
-            command.gear = carstate.gear or 1
 
         return new_acceleration
 
