@@ -9,7 +9,6 @@ import pandas as pd
 import numpy as np
 import pickle as pkl
 import time
-from pca import PCA
 
 """
 load training data from a .csv file at the given location 'path_to_data'
@@ -20,7 +19,6 @@ Returns:
     input data and target output data as Tensors
 """
 def load_training_data(path_to_data):
-    use_pca = True
 
     # read csv file
     training_data = pd.read_csv(path_to_data,index_col=False)
@@ -28,19 +26,6 @@ def load_training_data(path_to_data):
     # split training dataframe into input and target output data
     # use the first 3 columns as target data, and the rest as input data
     input_data = training_data.iloc[:,3::]
-
-    if use_pca:
-        # if we dcide to use pca, convert range finder data:
-
-        car_data = input_data.iloc[:, 0:3]
-        range_data = input_data.iloc[:, 3:]
-        range_data = PCA.convert(range_data)
-        car_data = pd.DataFrame(car_data)
-        range_data = pd.DataFrame(range_data)
-
-        input_data = pd.concat([car_data, range_data], axis=1)
-
-
     target_data = training_data.iloc[:,0:3]
 
     # check for missing values (nan entries) and delete detected rows
@@ -65,8 +50,8 @@ class EchoStateNet():
     sparsity: ratio of zero entries in the reservoir weight matrix
     teacher_forcing: use feedback from the previous output?
     """
-    def __init__(self, D_in, D_out, D_reservoir=500,
-                 spectral_radius=0.9, sparsity=0.85, teacher_forcing=True):
+    def __init__(self, D_in, D_out, D_reservoir=100,
+                 spectral_radius=0.9, sparsity=0.95, teacher_forcing=True):
 
         # check for proper dimensionality of all arguments and write them down.
         self.D_in = D_in
@@ -127,48 +112,73 @@ class EchoStateNet():
     """
     drive the network by the training data
     Args:
-        inputs: input data, 2D-array of shape (D_in, number of training samples)
-        target_outputs: corresponding desired output values, 2D-array of shape (D_out, number of training samples)
+        inputs: input data, list of independent input data sets as 2D-arrays of shape (D_in, number of training samples)
+        target_outputs: corresponding desired output values, list of independent output data sets as 2D-array of shape (D_out, number of training samples)
         storage_path: location to save the trained EchoStateNet object to
     Returns:
         network output for the training input data using the learned readout weights
     """
-    def train(self, inputs, target_outputs, storage_path):
+    def train(self, all_inputs, all_target_outputs, storage_path):
 
-        inputs = np.asarray(inputs)
-        target_outputs = np.asarray(target_outputs)
-        outputs_too_large = np.where(target_outputs>=1)
-        target_outputs[outputs_too_large] = 0.99999
-        outputs_too_small = np.where(target_outputs<=-1)
-        target_outputs[outputs_too_small] = -0.99999
+        collected_extended_states = np.empty(0)
+        collected_target_outputs = np.empty(0)
 
-        # assure that inputs and outputs are in the right shape
-        if inputs.shape[0] != self.D_in:
-            inputs = inputs.T
-        if target_outputs.shape[0] != self.D_out:
-            target_outputs = target_outputs.T
-        batch_size = inputs.shape[1]
+        if type(all_inputs) is not list:
+            all_inputs = [all_inputs]
+            all_target_outputs = [all_target_outputs]
 
-        # step the reservoir through the given input,output pairs:
-        states = np.zeros((self.D_reservoir, batch_size))
-        for n in range(1, batch_size):
-            states[:,n] = self._next_states(states[:,n-1], inputs[:,n], target_outputs[:,n-1])
+        # loop over all independent training datasets
+        for i in range(len(all_inputs)):
+
+            # assure that outputs are <1 and >-1
+            inputs = np.asarray(all_inputs[i])
+            target_outputs = np.asarray(all_target_outputs[i])
+            outputs_too_large = np.where(target_outputs>=1)
+            target_outputs[outputs_too_large] = 0.99999
+            outputs_too_small = np.where(target_outputs<=-1)
+            target_outputs[outputs_too_small] = -0.99999
+
+            # assure that inputs and outputs are in the right shape
+            if inputs.shape[0] != self.D_in:
+                inputs = inputs.T
+            if target_outputs.shape[0] != self.D_out:
+                target_outputs = target_outputs.T
+            batch_size = inputs.shape[1]
+
+            # step the reservoir through the given input,output pairs
+            # for each independent training dataset start with zero-states again
+            states = np.zeros((self.D_reservoir, batch_size))
+            for n in range(1, batch_size):
+                states[:,n] = self._next_states(states[:,n-1], inputs[:,n], target_outputs[:,n-1])
+
+
+            # concatenation of inputs u(n) and states x(n) --> get matrix with shape (D_in + D_reservoir, time points T)
+            extended_states = np.concatenate((inputs, states), axis=0)
+
+            # ignore the first t_0 time steps (wash out time) for the computation of output weights
+            wash_out = 5 # HOW LARGE SHOULD THIS BE????
+            extended_states = extended_states[:,wash_out:]
+            target_outputs = target_outputs[:,wash_out:]
+
+            # collect the extended_states for all training datasets i in the variable 'extended_states'
+            if i==0:
+                collected_extended_states = extended_states
+                collected_target_outputs = target_outputs
+            else:
+                collected_extended_states = np.concatenate((collected_extended_states, extended_states), axis=1)
+                collected_target_outputs = np.concatenate((collected_target_outputs, target_outputs), axis=1)
+            print('shape of extended_states: '+str(collected_extended_states.shape))
+
+
 
 
         # learn the readout weights, i.e. find the linear combination of collected
         # network states that is closest to the target output
-
-        # concatenation of inputs u(n) and states x(n) --> get matrix with shape (time points T, D_in + D_reservoir)
-        extended_states = np.concatenate((inputs, states), axis=0)
-
-        # ignore the first t_0 time steps (wash out time) for the computation of output weights
-        wash_out = 5 # HOW LARGE SHOULD THIS BE????
-
         # determine W_out by solving the system w_out*extended_states = target_output
         # use the Moore-Penrose pseudoinverse of extended_states
         # w_out = target_output * pseudoinverse(extended_states)
-        pseudoinverse = np.linalg.pinv(extended_states[:,wash_out:])
-        self.w_out = np.dot(np.arctanh(target_outputs[:,wash_out:]), pseudoinverse)
+        pseudoinverse = np.linalg.pinv(collected_extended_states)
+        self.w_out = np.dot(np.arctanh(collected_target_outputs), pseudoinverse)
 
         # remember the last state for later:
         #self.laststate = states[:,-1]
@@ -180,8 +190,8 @@ class EchoStateNet():
         #self.lastoutputs = np.zeros((self.D_out,50))
 
         # apply learned weights to the collected states and report the mean squared error
-        pred_train = np.tanh(np.dot(self.w_out, extended_states))
-        print(np.sqrt(np.mean((pred_train - np.arctanh(target_outputs))**2)))
+        pred_train = np.tanh(np.dot(self.w_out, collected_extended_states))
+        print(np.sqrt(np.mean((pred_train - np.arctanh(collected_target_outputs))**2)))
 
         # save the trained network
         with open(storage_path, 'wb') as file:
@@ -307,7 +317,7 @@ class MultiLayerPerceptron():
     """
     Constructor
     """
-    def __init__(self, D_in, D_h, D_out, learning_rate=1e-6, n_iterations=20000):
+    def __init__(self, D_in, D_h, D_out, learning_rate=1e-5, n_iterations=1000):
         self.D_in = D_in
         self.D_h = D_h
         self.D_out = D_out
@@ -316,7 +326,7 @@ class MultiLayerPerceptron():
 
         self.net = torch.nn.Sequential(
         torch.nn.Linear(D_in, D_h),
-        torch.nn.Sigmoid(),
+        torch.nn.Tanh(),
         torch.nn.Linear(D_h, D_out),)
 
 
@@ -330,11 +340,10 @@ class MultiLayerPerceptron():
     """
     def train(self, input_data, target_data, storage_path, path_to_initial_net=None):
 
-        train_pca = False
+        if type(input_data) is list:
+            input_data = np.concatenate(tuple(input_data), axis=0)
+            target_data = np.concatenate(tuple(target_data), axis=0)
 
-        if train_pca:
-            print("Training PCA")
-            PCA.train('./trained_nn/data_damned.csv')
 
         # convert input and target output to Tensors
         input_data = torch.FloatTensor(input_data)
@@ -360,7 +369,7 @@ class MultiLayerPerceptron():
         loss_func = torch.nn.MSELoss(size_average=False)
 
         # set optimization algorithm (here: gradient descent)
-        opt = torch.optim.SGD(self.net.parameters(), lr=self.learning_rate, momentum=0.5)
+        opt = torch.optim.SGD(self.net.parameters(), lr=self.learning_rate)
 
         for t in range(self.n_iterations):
 
@@ -369,7 +378,7 @@ class MultiLayerPerceptron():
 
             # Compute loss
             loss = loss_func(y_pred, y)
-            print(loss)
+            #print(loss)
 
             # Zero the gradients before running the backward pass
             opt.zero_grad()
@@ -394,7 +403,7 @@ Args:
 Returns:
     the resulting prediction
 """
-def restore_MLP_and_predict(input_data,path_to_trained_net):
+def restore_MLP_and_predict(input,path_to_trained_net):
 
     # convert input and target output to Tensors
     input_data = Variable(torch.FloatTensor(input_data))
@@ -407,6 +416,6 @@ def restore_MLP_and_predict(input_data,path_to_trained_net):
     #    print(param.data, param.size())
 
     # predict output for the given input
-    prediction = net(input_data)
+    prediction = net(input)
 
     return prediction.data
