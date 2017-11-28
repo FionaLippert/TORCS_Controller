@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import pickle as pkl
 import time
+from pca import PCA
 
 """
 load training data from a .csv file at the given location 'path_to_data'
@@ -19,14 +20,26 @@ Returns:
     input data and target output data as Tensors
 """
 def load_training_data(path_to_data):
-
+    use_pca = True
     # read csv file
-    training_data = pd.read_csv(path_to_data,index_col=False)
+    training_data = pd.read_csv(path_to_data,index_col=False, header=None)
 
     # split training dataframe into input and target output data
     # use the first 3 columns as target data, and the rest as input data
     input_data = training_data.iloc[:,3::]
     target_data = training_data.iloc[:,0:3]
+
+    # combine acceleration and braking into one output [-1, 1]
+    control = target_data.iloc[:, 0] - target_data.iloc[:, 1]
+    target_data = pd.concat((control, target_data.iloc[:, 2]), axis=1)
+
+    if use_pca:
+        car_data = pd.DataFrame(input_data.iloc[:, :3], columns=None, index=None)
+
+        range_data = input_data.iloc[:, 3:]
+        reduced_data = pd.DataFrame(PCA.convert(range_data), columns=None, index=None)
+        input_data = pd.concat((car_data, reduced_data), axis=1)
+
 
     # check for missing values (nan entries) and delete detected rows
     nan_rows_input = input_data.isnull().any(1)
@@ -50,8 +63,11 @@ class EchoStateNet():
     sparsity: ratio of zero entries in the reservoir weight matrix
     teacher_forcing: use feedback from the previous output?
     """
-    def __init__(self, D_in, D_out, D_reservoir=100,
-                 spectral_radius=0.9, sparsity=0.95, teacher_forcing=True):
+
+    # Decent settings: resv=50, spars=0.8, radius=0.9
+
+    def __init__(self, D_in, D_out, D_reservoir=20,
+                 spectral_radius=0.5, sparsity=0.5, teacher_forcing=True):
 
         # check for proper dimensionality of all arguments and write them down.
         self.D_in = D_in
@@ -212,8 +228,8 @@ class EchoStateNet():
         inputs = np.asarray(inputs)
 
         # assure that inputs are in the right shape
-        if inputs.shape[0] != self.D_in:
-            inputs = inputs.T
+        # if inputs.shape[0] != self.D_in:
+        #     inputs = inputs.T
         if len(inputs.shape)>1:
             batch_size = inputs.shape[1]
         else:
@@ -233,6 +249,7 @@ class EchoStateNet():
             inputs = np.concatenate((lastinputs[:,None], inputs),axis=1)
         else:
             inputs = np.concatenate((lastinputs[:,None], inputs[:,None]),axis=1)
+
             #inputs = np.stack((lastinputs, inputs),axis=-1)
         states = np.concatenate((laststates[:,None], np.zeros((self.D_reservoir, batch_size))),axis=1)
         outputs = np.concatenate((lastoutputs[:,None], np.zeros((self.D_out, batch_size))),axis=1)
@@ -255,8 +272,8 @@ class EchoStateNet():
             #    with open(storage_path, 'wb') as file:
             #        pkl.dump(self,file)
 
-
-        return outputs[:,-batch_size:]
+        command = outputs[:,-batch_size:]
+        return [command[0][0], command[1][0]]
 
 """
 load EchoStateNet object from .pkl file and use it to predict outputs
@@ -305,7 +322,7 @@ class MultiLayerPerceptron():
     """
     Constructor
     """
-    def __init__(self, D_in, D_h, D_out, learning_rate=1e-5, n_iterations=1000):
+    def __init__(self, D_in, D_h, D_out, learning_rate=1e-6, n_iterations=10000):
         self.D_in = D_in
         self.D_h = D_h
         self.D_out = D_out
@@ -357,7 +374,7 @@ class MultiLayerPerceptron():
         loss_func = torch.nn.MSELoss(size_average=False)
 
         # set optimization algorithm (here: gradient descent)
-        opt = torch.optim.SGD(self.net.parameters(), lr=self.learning_rate)
+        opt = torch.optim.SGD(self.net.parameters(), lr=self.learning_rate, momentum=0.5)
 
         for t in range(self.n_iterations):
 
@@ -366,7 +383,7 @@ class MultiLayerPerceptron():
 
             # Compute loss
             loss = loss_func(y_pred, y)
-            #print(loss)
+            print(loss.values)
 
             # Zero the gradients before running the backward pass
             opt.zero_grad()

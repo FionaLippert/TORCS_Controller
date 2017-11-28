@@ -28,7 +28,7 @@ class PCA():
             - x must be in the shape (1, m) (for a single data sample)
               or in the shape (n, m) (for n data samples)
         """
-        weights = np.load('./trained_nn/pca.npy')
+        weights = np.load('./trained_nn/pca5.npy')
         return np.dot(x, weights)
 
     # def load():
@@ -46,9 +46,9 @@ class PCA():
         # number of inputs:
         m = 19
         # dimension to reduce to:
-        l = 4
+        l = 3
         # learning rate:
-        lr_0 = 1e-3
+        lr_0 = 1e-4
         # number of iterations:
         iterations = 20000
 
@@ -62,17 +62,18 @@ class PCA():
         w = np.random.randn(m, l)
 
         # define a spreading distance for activation
-        sig_0 = 0.1
+        sig_0 = 1
 
         # distance function:
         def dist(i, j):
             return np.abs(i - j)
 
+        # x = np.random.randn([m, l])
+
+        # for t in range(iterations):
         while(True):
-        # for n in range(iterations):
             # sample input:  (choose random!)
             x = np.array(data.iloc[np.random.randint(data.shape[0])])
-            # x = np.random
             x.shape = (m, 1)
 
             # find winning neuron i:
@@ -105,6 +106,9 @@ class PCA():
 
             # Hebbian learning:
             # compute output:
+
+            # x = np.array(data.iloc[np.random.randint(data.shape[0])])
+            # x.shape = (m, 1)
             # y = np.dot(w, x)
             #
             # # change weights:
@@ -119,10 +123,13 @@ class PCA():
             #         delta_w[j][i] = y[j] * (x[i] - sigma)
             #
             # # update weights:
-            # w += (lr * delta_w)
+            # w += (lr_0 * delta_w)
             #
             # if (t+1)%1000 == 0:
             #     print(w[:, 0])
+            #
+            # if t > iterations:
+            #     break
 
         weights = w
-        np.save('./trained_nn/pca.npy', w)
+        np.save('./trained_nn/pca3.npy', w)
