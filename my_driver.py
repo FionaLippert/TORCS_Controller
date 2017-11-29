@@ -14,8 +14,24 @@ import numpy as np
 import os.path
 import time
 from sys import stdout
+import os
+import subprocess
 
 class MyDriver(Driver):
+
+    def __init__(self, logdata=False):
+        self.steering_ctrl = CompositeController(
+            ProportionalController(0.4),
+            IntegrationController(0.2, integral_limit=1.5),
+            DerivativeController(2)
+        )
+        self.acceleration_ctrl = CompositeController(
+            ProportionalController(3.7),
+        )
+        self.data_logger = DataLogWriter() if logdata else None
+
+        torcs_command = ["torcs","-r",os.path.abspath("practice.xml")]
+        self.torcs_process = subprocess.Popen(torcs_command)
 
     def drive(self, carstate: State):
         # stdout.flush()
@@ -24,7 +40,7 @@ class MyDriver(Driver):
         # print("\033c")
 
         use_simple_driver = False
-        use_pca = True
+        use_pca = False
 
         command = Command()
 
@@ -70,9 +86,9 @@ class MyDriver(Driver):
             # else:
 
             # PATH_TO_NEURAL_NET = "./trained_nn/mlp2.pkl"
-            # PATH_TO_NEURAL_NET = "./trained_nn/esn.pkl"
+            PATH_TO_NEURAL_NET = "./trained_nn/esn.pkl"
             # if use_pca:
-            PATH_TO_NEURAL_NET = "./trained_nn/mlp_pca.pkl"
+            #PATH_TO_NEURAL_NET = "./trained_nn/mlp_pca.pkl"
 
             x = np.array(sensor_TRACK_EDGES) / 200
             if use_pca:
@@ -83,19 +99,19 @@ class MyDriver(Driver):
                 sensor_data += list(x)
 
             # use MultiLayerPerceptron
-            output = neuralNet.restore_MLP_and_predict(sensor_data, PATH_TO_NEURAL_NET)
+            #output = neuralNet.restore_MLP_and_predict(sensor_data, PATH_TO_NEURAL_NET)
 
 
             # use EchoStateNet
 
 
             # output = neuralNet.restore_ESN_and_predict(sensor_data, PATH_TO_NEURAL_NET,continuation=True)
-            # try:
-            #     output = self.esn.predict(sensor_data,continuation=True)
-            #     # print('esn already loaded')
-            # except:
-            #     self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
-            #     output = self.esn.predict(sensor_data,continuation=True)
+            try:
+                output = self.esn.predict(sensor_data,continuation=True)
+                # print('esn already loaded')
+            except:
+                self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
+                output = self.esn.predict(sensor_data,continuation=True)
                 # print('load esn')
             #
             # print(output)
@@ -111,12 +127,12 @@ class MyDriver(Driver):
             steer = min(max(output[1],-1),1)
 
             # gear_change = output.data[3]
-
+            """
             print('Speed: %.2f, Track Position: %.2f, Angle to Track: %.2f\n'%(sensor_data[0], sensor_data[1], sensor_data[2]))
             print('Accelrator: %.2f, Brake: %.2f, Steering: %.2f'%(accel, brake, steer))
             print('Field View:')
             print(''.join('{:3f}, '.format(x) for x in sensor_data[3:]))
-
+            """
 
 
             """
