@@ -153,6 +153,18 @@ class MyDriver(Driver):
         #     print('distance_from_start: 0')
 
         # print('total time: %.2fms'%((time.time()-t)*1000))
+
+        """
+        write data for evaluation to file 'simulation_log.txt'
+        """
+        with open('./simulation_log.txt', 'a') as file:
+            file.write('current_lap_time: '+str(carstate.current_lap_time)+"\n")
+            if carstate.distance_from_start <= carstate.distance_raced:
+                file.write('distance_from_start: '+str(carstate.distance_from_start)+"\n")
+            else:
+                file.write('distance_from_start: 0 \n')
+
+
         return command
 
 
