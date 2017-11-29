@@ -53,6 +53,11 @@ def load_training_data(path_to_data):
 class EchoStateNet():
 
     """
+    Evolve: reservoir size, spectral_radius, sparsity. Or: reservoir weights with given reservoir size
+    Evolve with opponents: evolve output weigths
+    """
+
+    """
     Constructor
 
     creates an echo state network with
@@ -67,7 +72,7 @@ class EchoStateNet():
     # Decent settings: resv=50, spars=0.8, radius=0.9
 
     def __init__(self, D_in, D_out, D_reservoir=20,
-                 spectral_radius=0.5, sparsity=0.5, teacher_forcing=True):
+                 spectral_radius=0.5, sparsity=0.5, teacher_forcing=True, reservoir_weights=None):
 
         # check for proper dimensionality of all arguments and write them down.
         self.D_in = D_in
@@ -78,14 +83,18 @@ class EchoStateNet():
         self.random_state_ = np.random.RandomState(1)
         self.teacher_forcing = teacher_forcing
 
-        self._init_weights()
+        if reservoir_weights is None or reservoir_weights.shape != (self.D_reservoir,self.D_reservoir):
+            self._init_weights()
+            self._init_reservoir()
+        else:
+            self.w_reservoir = reservoir_weights
 
         self.laststates = np.zeros(self.D_reservoir)
         self.lastinputs = np.zeros(self.D_in)
         self.lastoutputs = np.zeros(self.D_out)
 
     """
-    initialize input weights 'w_in', feedback weights 'w_back', reservoir weights 'w_reservoir'
+    initialize input weights 'w_in' and feedback weights 'w_back', reservoir weights 'w_reservoir'
     """
     def _init_weights(self):
 
@@ -96,7 +105,10 @@ class EchoStateNet():
         if self.teacher_forcing:
             self.w_back = (self.random_state_.rand(self.D_reservoir, self.D_out) - 0.5) * 2.0
 
-
+    """
+    initialize reservoir weights 'w_reservoir'
+    """
+    def _init_reservoir(self):
         # initialize reservoir weights
         # create random weights centered around zero
         w = self.random_state_.rand(self.D_reservoir, self.D_reservoir) - 0.5
