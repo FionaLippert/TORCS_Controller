@@ -10,6 +10,7 @@ import numpy as np
 import pickle as pkl
 import time
 from pca import PCA
+from scipy.sparse import linalg
 
 """
 load training data from a .csv file at the given location 'path_to_data'
@@ -20,7 +21,7 @@ Returns:
     input data and target output data as Tensors
 """
 def load_training_data(path_to_data):
-    use_pca = True
+    use_pca = False
     # read csv file
     training_data = pd.read_csv(path_to_data,index_col=False, header=None)
 
@@ -114,10 +115,17 @@ class EchoStateNet():
         w = self.random_state_.rand(self.D_reservoir, self.D_reservoir) - 0.5
         # force the weight matrix to be sparse: set weights with probability=sparsity to zero
         w[self.random_state_.rand(self.D_reservoir, self.D_reservoir) < self.sparsity] = 0
+        # compute the max eigenvalue
+        rho = np.real(linalg.eigs(w, k=1,return_eigenvectors=False)[0])
+        # if all eigenvalues are zero add connections to weight matrix until an eigenvalue != 0 is obtained
+        while rho==0:
+            index = self.random_state_.randint(0,self.D_reservoir,size=2)
+            w[index[0],index[1]] = self.random_state_.rand(1) -0.5
+            rho = np.real(linalg.eigs(w, k=1,return_eigenvectors=False)[0])
         # normalize and scale w to obtain a matrix with the desired spectral radius
-        rho = np.max(np.abs(np.linalg.eigvals(w)))
         w = w*(self.spectral_radius/rho)
         self.w_reservoir = w
+        #print(w[np.where(w!=0)])
 
     """
     perform one update step of the network
@@ -195,7 +203,7 @@ class EchoStateNet():
             else:
                 collected_extended_states = np.concatenate((collected_extended_states, extended_states), axis=1)
                 collected_target_outputs = np.concatenate((collected_target_outputs, target_outputs), axis=1)
-            print('shape of extended_states: '+str(collected_extended_states.shape))
+            #print('shape of extended_states: '+str(collected_extended_states.shape))
 
 
 
@@ -219,7 +227,7 @@ class EchoStateNet():
 
         # apply learned weights to the collected states and report the mean squared error
         pred_train = np.tanh(np.dot(self.w_out, collected_extended_states))
-        print(np.sqrt(np.mean((pred_train - np.arctanh(collected_target_outputs))**2)))
+        #print(np.sqrt(np.mean((pred_train - np.arctanh(collected_target_outputs))**2)))
 
         # save the trained network
         with open(storage_path, 'wb') as file:
