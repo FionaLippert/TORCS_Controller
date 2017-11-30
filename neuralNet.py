@@ -84,10 +84,12 @@ class EchoStateNet():
         self.random_state_ = np.random.RandomState(1)
         self.teacher_forcing = teacher_forcing
 
+        self._init_weights()
+
         if reservoir_weights is None or reservoir_weights.shape != (self.D_reservoir,self.D_reservoir):
-            self._init_weights()
             self._init_reservoir()
         else:
+            print('load weights')
             self.w_reservoir = reservoir_weights
 
         self.laststates = np.zeros(self.D_reservoir)
@@ -216,18 +218,9 @@ class EchoStateNet():
         pseudoinverse = np.linalg.pinv(collected_extended_states)
         self.w_out = np.dot(np.arctanh(collected_target_outputs), pseudoinverse)
 
-        # remember the last state for later:
-        #self.laststate = states[:,-1]
-        #self.lastinput = inputs[:,-1]
-        #self.lastoutput = target_outputs[:,-1]
 
-        #self.laststates = np.zeros((self.D_reservoir,50))
-        #self.lastinputs = np.zeros((self.D_in,50))
-        #self.lastoutputs = np.zeros((self.D_out,50))
-
-        # apply learned weights to the collected states and report the mean squared error
+        # apply learned weights to the collected states
         pred_train = np.tanh(np.dot(self.w_out, collected_extended_states))
-        #print(np.sqrt(np.mean((pred_train - np.arctanh(collected_target_outputs))**2)))
 
         # save the trained network
         with open(storage_path, 'wb') as file:
@@ -247,13 +240,17 @@ class EchoStateNet():
 
         inputs = np.asarray(inputs)
 
-        # assure that inputs are in the right shape
-        # if inputs.shape[0] != self.D_in:
-        #     inputs = inputs.T
         if len(inputs.shape)>1:
             batch_size = inputs.shape[1]
+            for i in range(batch_size):
+                # assure that inputs are in the right shape
+                if inputs[i].shape[0] != self.D_in:
+                    inputs[i,:] = inputs[i,:].T
         else:
             batch_size = 1
+            # assure that inputs are in the right shape
+            if inputs.shape[0] != self.D_in:
+                inputs = inputs.T
 
         if continuation:
             laststates = self.laststates
@@ -265,16 +262,13 @@ class EchoStateNet():
             lastoutputs = np.zeros(self.D_out)
 
         if batch_size > 1:
-            #inputs = np.concatenate((lastinputs, inputs),axis=1)
             inputs = np.concatenate((lastinputs[:,None], inputs),axis=1)
         else:
             inputs = np.concatenate((lastinputs[:,None], inputs[:,None]),axis=1)
 
-            #inputs = np.stack((lastinputs, inputs),axis=-1)
         states = np.concatenate((laststates[:,None], np.zeros((self.D_reservoir, batch_size))),axis=1)
         outputs = np.concatenate((lastoutputs[:,None], np.zeros((self.D_out, batch_size))),axis=1)
-        #states = np.concatenate((laststates, np.zeros((self.D_reservoir, batch_size))),axis=1)
-        #outputs = np.concatenate((lastoutputs, np.zeros((self.D_out, batch_size))),axis=1)
+
 
 
         for n in range(batch_size):
@@ -287,10 +281,10 @@ class EchoStateNet():
             self.lastinputs = inputs[:,-1]
             self.lastoutputs = outputs[:,-1]
 
-            #if storage_path is not None:
-            #    # save the trained network
-            #    with open(storage_path, 'wb') as file:
-            #        pkl.dump(self,file)
+            if storage_path is not None:
+                # save the trained network
+                with open(storage_path, 'wb') as file:
+                    pkl.dump(self,file)
 
         command = outputs[:,-batch_size:]
         return [command[0][0], command[1][0]]
@@ -325,16 +319,7 @@ def restore_ESN(path_to_trained_net):
         return net
 
 
-#class Net(torch.nn.Module):
-#    def __init__(self, n_input, n_hidden, n_output):
-#        super(Net, self).__init__()
-#        self.hidden = torch.nn.Linear(n_input, n_hidden)   # hidden layer
-#        self.predict = torch.nn.Linear(n_hidden, n_output)   # output layer
-#
-#    def forward(self, x):
-#        x = F.tanh(self.hidden(x))      # activation function for hidden layer
-#        x = self.predict(x)             # linear output
-#        return x
+
 
 
 class MultiLayerPerceptron():
