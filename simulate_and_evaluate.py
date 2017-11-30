@@ -4,6 +4,8 @@ import subprocess
 from subprocess import Popen, PIPE
 import os
 import signal
+from xml.etree import ElementTree as et
+import xml.etree.cElementTree as etc
 
 
 # ~/Documents/MScComputationalScience/CI/torcs-server/torcs-client/practice.xml
@@ -15,44 +17,75 @@ import signal
 #client_command = [os.path.abspath("start.sh")]
 #client_process = subprocess.Popen(client_command,stdout=subprocess.PIPE,shell=True)
 
-path = os.path.abspath("practice.xml")
-torcs_command = ["./simulate.sh"]
-torcs_process = subprocess.Popen(torcs_command,stdout=PIPE,shell=True)
-child_pid = torcs_process.pid
-print(child_pid)
+tracks = ['e-road','forza','aalborg']
 
-stop = False
-distances = []
+#def simulate(track_index):
+def simulate():
+    #path = os.path.abspath("practice.xml")
+    #torcs_command = ["./simulate.sh"]
+    #torcs_command = ["./start.sh"]
+    #torcs_process = subprocess.Popen(torcs_command,stdout=PIPE)
 
-for line in iter(torcs_process.stdout.readline,''):
-    if not stop:
-        print(line)
-    if line.find("current_lap_time: ") > -1:
-        if float(line.partition(": ")[2]) > 30.0:
-            stop = True
-            #print(line)
-            os.kill(child_pid,signal.SIGTERM)
-    if stop and line.find("distance_from_start: ") > -1:
-        distances.append(float(line.partition(": ")[2]))
+    # overwrite existing file
+    with open('./simulation_log.txt', 'w') as file:
+        file.write("----------New simulation-----------\n")
 
-#subprocess.call('torcs -r ~/Documents/MScComputationalScience/CI/torcs-server/torcs-client/practice.xml & ./start.sh',shell=True)
+    """
+    # change track in config file
+    tree = etc.parse('./practice.xml')
+    root = tree.getroot()
+    track_index = min(max(0,track_index),len(tracks)-1)
+    for section in root.findall('section'):
+        if section.get('name')=='Tracks':
+            s = section.find('.//attstr')
+            print(s.attrib['val'])
+            s.attrib['val'] = tracks[track_index]
+            print(s.attrib['val'])
+    with open('./practice.xml','w') as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE params SYSTEM "../libs/tgf/params.dtd">')
+        tree.write(f,'utf-8')
+    """
 
-#torcs_out = torcs_process.communicate()[0]
-#client_out = client_process.communicate()[0]
-#for line in torcs_out.splitlines():
-    # process the output line by line
-#    print(line)
-
-print('final distance: '+str(distances[0]))
+    subprocess.call(["./start.sh"])
+    #child_pid = torcs_process.pid
 
 
+    #stop = False
+    #distances = []
+    #for line in iter(torcs_process.stdout.readline,''):
+    #    print(line)
+    """
+    for line in iter(torcs_process.stdout.readline,''):
+        if not stop:
+            print(line)
+        if line.find(b"current_lap_time: ") > -1:
+            if float(line.partition(b": ")[2]) > time:
+                stop = True
+                #print(line)
+                os.kill(child_pid,signal.SIGTERM)
+        if stop and line.find(b"distance_from_start: ") > -1:
+            #distances.append(float(line.partition(": ")[2]))
+            return float(line.partition(b": ")[2])
+    """
 
+def get_distance_after_time(t):
+    stop = False
+    with open('./simulation_log.txt', 'r') as file:
+        for line in file:
+            if line.find("current_lap_time: ") > -1:
+                if float(line.partition(": ")[2]) > t:
+                    stop = True
+            if stop and line.find("distance_from_start: ") > -1:
+                #distances.append(float(line.partition(": ")[2]))
+                return float(line.partition(": ")[2])
 
+    #print('final distance: '+str(distances[0]))
 
-#for line in torcs_process.splitlines():
-    # process the output line by line
-#    print(line)
-    #if line.find("distance_from_start: ") > -1:
-    #    distances.append(float(line.partition(": ")[2]))
+def repeat_simulations(n):
+    for i in range(n):
+        with open('./simulation_log.txt', 'w') as file:
+            file.write("----------New simulation-----------\n")
+        simulate()
+        print(get_distance_after_time(10.0))
 
-#print('final distance: '+str(distances[-1]))
+#repeat_simulations(2)

@@ -6,7 +6,6 @@ from neuralNet import EchoStateNet as ESN
 from neuralNet import MultiLayerPerceptron as MLP
 import os
 from os import path
-from pca import PCA as PCA
 
 
 """
@@ -52,8 +51,6 @@ if esn:
     net = ESN(D_in,D_out,teacher_forcing=True)
 else:
     net = MLP(D_in,D_in,D_out)
-
-# PCA.train(path_to_data)
 
 if len(sys.argv)>=4:
 

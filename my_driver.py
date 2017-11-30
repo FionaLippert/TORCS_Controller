@@ -30,8 +30,14 @@ class MyDriver(Driver):
         )
         self.data_logger = DataLogWriter() if logdata else None
 
+
+        """
+        launch torcs practice race when ./start.sh is executed
+        comment out for normal use of torcs
+        """
         torcs_command = ["torcs","-r",os.path.abspath("practice.xml")]
         self.torcs_process = subprocess.Popen(torcs_command)
+
 
     def drive(self, carstate: State):
         # stdout.flush()
@@ -97,24 +103,22 @@ class MyDriver(Driver):
                 # print(sensor_data)
             else:
                 sensor_data += list(x)
-
-            # use MultiLayerPerceptron
+            """
+            use MultiLayerPerceptron
+            """
             #output = neuralNet.restore_MLP_and_predict(sensor_data, PATH_TO_NEURAL_NET)
 
 
-            # use EchoStateNet
-
-
-            # output = neuralNet.restore_ESN_and_predict(sensor_data, PATH_TO_NEURAL_NET,continuation=True)
+            """
+            use EchoStateNet
+            """
             try:
                 output = self.esn.predict(sensor_data,continuation=True)
                 # print('esn already loaded')
             except:
                 self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
                 output = self.esn.predict(sensor_data,continuation=True)
-                # print('load esn')
-            #
-            # print(output)
+
 
 
             if output[0] > 0:
@@ -135,13 +139,18 @@ class MyDriver(Driver):
             """
 
 
+
+            """
+            # full acceleration at the start of the race
+            if carstate.distance_raced<50:
+                accel = 1
+                brake = 0
+                steer = 0
+            """
+
             """
             Apply Accelrator, Brake and Steering Commands.
             """
-
-            #if carstate.distance_from_start < 5:
-            #    command.accelerator = 1
-            #else:
             command.accelerator = accel
             command.brake = brake
             command.steering = steer
@@ -162,13 +171,6 @@ class MyDriver(Driver):
             command.gear = carstate.gear or 1
 
 
-        # print('current_lap_time: '+str(carstate.current_lap_time))
-        # if carstate.distance_from_start <= carstate.distance_raced:
-        #     print('distance_from_start: '+str(carstate.distance_from_start))
-        # else:
-        #     print('distance_from_start: 0')
-
-        # print('total time: %.2fms'%((time.time()-t)*1000))
 
         """
         write data for evaluation to file 'simulation_log.txt'
