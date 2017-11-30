@@ -5,6 +5,24 @@ import time
 import os
 from shutil import copyfile
 
+'''
+Script that runs in parallel to TORCS which evolves evaluated ESN as they are
+being tested.
+
+Need a folder './pool/' where the population of ESNs are stored, where each
+file has the name 'evesn####.pkl' where #### is the I.D. of that network
+(I.D. can be any length integer).
+
+Also need 'log.csv' where the cars will log their evaluations
+
+And a folder './best/' where this program will store the highest rated ESN
+
+Just start this from terminal with the command:
+    $ python online_evolver.py
+
+To terminate, kill process with ctrl+c
+'''
+
 class Evolver():
 
     def __init__(self):
@@ -20,14 +38,23 @@ class Evolver():
         t = time.time()
         self.next_evo = t + self.WAIT_TIME
 
+        # check if folders exist:
+        if not os.path.isdir(self.PATH_TO_POOL):
+            print('NO POOL FOLDER FOUND \nTerminating...')
+            return
+
+        if not os.path.isdir(self.PATH_TO_BEST):
+            print('Creating folder to keep best network...')
+            os.system('mkdir %s'%self.PATH_TO_BEST)
+
         # load the current pool of neural networks:
-        self.pool = os.listdir('./pool')
-        if len(self.pool) == 0:
+        pool = os.listdir('./pool')
+        if len(pool) == 0:
             print('NO INITIAL NETWORKS FOUND \nTerminating...')
             return
 
-        for nn in self.pool:
-            self.current_pool.append(int(list(filter(str.isdigit, nn))[0]))
+        for nn in pool:
+            self.current_pool.append(int(nn[5:-4]))
 
         self.generation = max(self.current_pool) + 1
 
@@ -35,6 +62,13 @@ class Evolver():
         # while time.time() - t < 3.0:
         #     # pause for 5 seconds to sync with cars
         #     pass
+
+        # check if log.csv exists:
+        # try:
+        #     open("log.csv", "rb")
+        # except:
+        #     print('Creating log.csv')
+
 
         print('Ready')
 
@@ -123,5 +157,6 @@ class Evolver():
             print('Could not find network to delete')
 
 
+# Initiate evolver and start it
 god = Evolver()
 god.start()

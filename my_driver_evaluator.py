@@ -44,7 +44,16 @@ class MyDriver(Driver):
         '''
         if t > self.period_end_time and not self.recovering:
             # END CURRENT EVALUATION PERIOD:
-            if not self.first_evaluation:
+            if self.first_evaluation:
+                # check the right files and folders are available:
+                if not os.path.isdir('./pool/'):
+                    print('NO POOL FOLDER FOUND')
+                    return command
+
+                if not os.path.exists('./log.csv'):
+                    print('Creating log.csv...')
+                    open('./log.csv', 'w').close()
+            else:
                 # calculate fitness:
                 self.fitness += (carstate.distance_raced - self.period_start_dist) / EVAL_TIME
                 # log it along with it's id:
