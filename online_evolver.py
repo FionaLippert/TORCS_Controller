@@ -28,7 +28,7 @@ class Evolver():
     def __init__(self):
         self.PATH_TO_POOL = './pool/'
         self.PATH_TO_BEST = './best/'
-        self.WAIT_TIME = 2   # time to wait between mutations
+        self.WAIT_TIME = 10   # time to wait between mutations
 
         self.current_pool = []
         self.current_record = 0.0
@@ -63,13 +63,6 @@ class Evolver():
         #     # pause for 5 seconds to sync with cars
         #     pass
 
-        # check if log.csv exists:
-        # try:
-        #     open("log.csv", "rb")
-        # except:
-        #     print('Creating log.csv')
-
-
         print('Ready')
 
         while True:
@@ -91,39 +84,46 @@ class Evolver():
         log = np.loadtxt(open("log.csv", "rb"), delimiter=",")
         # print(log)
         if log.size == 0:
-            print('Log file empty!')
+            print('Log file empty...')
             return
 
         # sort the log file by best fitness:
-        if log.size <= 2:
+        if log.size <= 8:
+            # we need at least 4 evaluations to proceed
             # not enough evaluatoins to proceed
             print('Not enough evaluations...')
             return
 
         # clear the log:
-        # log_file = open('./log.csv', 'w')
-        # log_file.write('')
-        # log_file.close()
+        log_file = open('./log.csv', 'w')
+        log_file.write('')
+        log_file.close()
         # print('cleared log!')
 
-        # log = log[log[:, 1].argsort()[::-1]]
+        log = log[log[:, 1].argsort()[::-1]]
         print('Current Log:')
         print(log)
+
+        # MUTATION OF BEST NN
+        # first check if it still there...
+
+        best_nn = self.PATH_TO_POOL + 'evesn%s.pkl'%int(log[0, 0])
+        if not os.path.exists(best_nn):
+            print('Best ESN not found :(')
+            return
 
         # find the best nn and compare to record:
         if log[0, 1] > self.current_record:
             best_id = int(log[0, 0])
             print('Best ID: ' + str(best_id))
             self.current_record = log[0, 1]
-            path = self.PATH_TO_POOL + 'evesn%s.pkl'%best_id
-            copyfile(path, self.PATH_TO_BEST + 'top_ESN.pkl')
+            # path = self.PATH_TO_POOL + 'evesn%s.pkl'%best_id
+            copyfile(best_nn, self.PATH_TO_BEST + 'top_ESN.pkl')
 
-        # MUTATION OF BEST NN
-        path_to_mutate = self.PATH_TO_POOL + 'evesn%s.pkl'%int(log[0, 0])
-        with open(path_to_mutate, 'rb') as file:
+        with open(best_nn, 'rb') as file:
             net = pkl.load(file, encoding='latin1')
 
-        if np.random.random_sample() < 0.1:
+        if np.random.random_sample() < 0.05:
             # add a new neuron
             dim = net.D_reservoir
             row, col = np.random.randint(dim, size=2)
