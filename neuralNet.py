@@ -51,6 +51,58 @@ def load_training_data(path_to_data):
 
     return [input_data.values,target_data.values]
 
+
+class MLP():
+
+    """
+    Constructor
+    """
+    def __init__(self, D_in, D_h, D_out, w_1, w_2):
+        self.D_in = D_in
+        self.D_h = D_h
+        self.D_out = D_out
+        self.w_1 = w_1
+        self.w_2 = w_2
+
+    """
+    predict output of given input x
+    w_1 has shape (D_in+1,D_h) (+1 because bias vector is included in weight matrices)
+    w_2 has shape (D_h+1,D_out)
+    use tanh() as activation function for all layers
+    """
+    def predict(self,x):
+
+        x = np.concatenate((np.ones(1),x))
+        # Forward propagation
+        y1 = x.dot(self.w_1)
+        a1 = np.tanh(y1)
+        a1 = np.concatenate((np.ones(1),a1))
+        y2 = a1.dot(self.w_2)
+        output = np.tanh(y2)
+
+        return output
+    """
+    saves MLP object to .pkl file
+    """
+    def save(self, storage_path):
+
+        with open(storage_path, 'wb') as file:
+            pkl.dump(self,file)
+
+"""
+load MLP object from .pkl file
+Args:
+    path_to_net: location where the net has been saved to
+Returns:
+    MLP object
+"""
+def restore_MLP(path_to_net):
+
+    with open(path_to_net, 'rb') as file:
+        net = pkl.load(file, encoding='latin1')
+        return net
+
+
 class EchoStateNet():
 
     """
@@ -288,6 +340,14 @@ class EchoStateNet():
 
         command = outputs[:,-batch_size:]
         return [command[0][0], command[1][0]]
+
+
+
+    def load_w_out(self,path_to_w_out):
+
+        with open(path_to_w_out, 'rb') as file:
+            w_out = np.load(file)
+            self.w_out = w_out
 
 """
 load EchoStateNet object from .pkl file and use it to predict outputs

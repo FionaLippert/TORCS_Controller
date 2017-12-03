@@ -62,9 +62,15 @@ class MyDriver(Driver):
             subprocess.Popen(second_car_command)
         #torcs_output = subprocess.check_output(torcs_command)
         """
+        """
+        torcs_command = ["torcs","-r",os.path.abspath("./EA_current_config_file/practice.xml")]
+        self.torcs_process = subprocess.Popen(torcs_command)
+        """
+
         self.use_simple_driver = False
         self.use_pca = False
-        self.use_mlp_opponents = True
+        self.use_mlp_opponents = False
+        self.load_w_out_from_file = False # set to True to use externally obtained esn output weights
 
         self.previous_position = 1
 
@@ -128,6 +134,9 @@ class MyDriver(Driver):
             print(self.RECOVER_MSG)
             print('Stopped for 3 seconds...')
 
+            with open('./simulation_log.txt', 'a') as file:
+                file.write('stopped for 3 seconds\n')
+
 
         if self.recovering:
             self.simpleDriver(sensor_data, carstate, command)
@@ -171,6 +180,8 @@ class MyDriver(Driver):
             if np.abs(sensor_TRACK_POSITION) > 1:
                 if self.off_track == False:
                     print("### OFF ROAD ###")
+                    with open('./simulation_log.txt', 'a') as file:
+                        file.write('off road\n')
                     self.off_time = t
 
                 self.off_track = True
@@ -214,7 +225,11 @@ class MyDriver(Driver):
                 # print('esn already loaded')
             except:
                 self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
-                output = self.esn.predict(sensor_data,continuation=True)
+
+                if self.load_w_out_from_file:
+                    self.esn.load_w_out('w_out.npy')
+
+                output = self.esn.predict(sensor_data,continuation=False)
 
 
 
@@ -231,8 +246,8 @@ class MyDriver(Driver):
                     for sensor in opponents_data:
                         mlp_input.append(sensor/10.0) # normalize opponents_data to [0,1]
 
-                    #mlp = neuralNet.restore_MLP(PATH_TO_MLP)
-                    mlp = neuralNet.MLP(len(mlp_input), 20, 2, np.random.rand(len(mlp_input)+1,20), np.random.rand(21,2))
+                    mlp = neuralNet.restore_MLP(PATH_TO_MLP)
+                    #mlp = neuralNet.MLP(len(mlp_input), 20, 2, np.random.rand(len(mlp_input)+1,20), np.random.rand(21,2))
                     output = mlp.predict(np.asarray(mlp_input))
 
 
@@ -313,6 +328,8 @@ class MyDriver(Driver):
 
             file.write('distance to opponent: '+str(min(carstate.opponents))+'\n')
 
+            file.write('angle: '+str(carstate.angle)+'\n')
+
 
         self.previous_position = carstate.race_position
 
@@ -336,7 +353,7 @@ class MyDriver(Driver):
     def isStuck(self, angle, carstate):
 
         if (carstate.speed_x < 3) & (np.abs(carstate.distance_from_center) > 0.7) & (np.abs(angle) > 20/180*np.pi):
-            
+
             if (self.stuck > 100) & (angle * carstate.distance_from_center < 0.0):
                 return True
             else:
