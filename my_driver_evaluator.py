@@ -12,13 +12,13 @@ from pca import PCA
 import pandas as pd
 import numpy as np
 import os.path
-import time
 from sys import stdout
 
 class MyDriver(Driver):
     RECOVER_MSG = '+-'*6 + ' RECOVERING ' + '-+'*6
 
-    period_end_time = 0
+    last_cur_lap_time = 0
+    period_end_time = -1
     period_start_dist = 0
     first_evaluation = True
     fitness = 0
@@ -29,18 +29,24 @@ class MyDriver(Driver):
     warm_up = False   # in this state let robot drive
     is_stopped = False
     stopped_time = 0   # if the car is still for 3 secs go into Recovery mode
-
-
+    init_time = 0   # only listen to the network after 1 second to initialise the ESN
+    train_overtaking = False
 
     def drive(self, carstate: State):
 
-        # evaluation period
-        EVAL_TIME = 10
+        # evaluation period in seconds
+        EVAL_TIME = 20
 
-        t = time.time()
-        # print("\033c")
+        t = carstate.current_lap_time
+        if t < self.last_cur_lap_time:
+            # made a lap, adjust timing events accordingly!
+            self.period_end_time -= carstate.last_lap_time
+            self.off_time -= carstate.last_lap_time
+            self.recovered_time -= carstate.last_lap_time
+            self.stopped_time -= carstate.last_lap_time
 
-        use_simple_driver = False
+        self.last_cur_lap_time = t
+
         use_pca = False
 
         command = Command()
@@ -62,9 +68,9 @@ class MyDriver(Driver):
             else:
                 # FITNESS CALCULATION
                 # currently average speed (in MPS)
-                # penalties for off track and recovery
-                # bonus points for negotiating corners well?
-                # (i.e. if steering  > 0.1 while angle < 20deg)
+                # penalties for off track and recovery, and using brake too much
+                # bonus points for staying in middle of track and keeping small
+                # angle
 
                 self.fitness += (carstate.distance_raced - self.period_start_dist) / EVAL_TIME
 
@@ -74,7 +80,6 @@ class MyDriver(Driver):
                 log.write('%s, %.2f\n'%(nn_id, self.fitness))
                 log.close()
                 print('Fitness Score %.2f logged\n'%(self.fitness))
-                pass
 
             # START NEXT EVALUATION PERIOD:
             # load random net:
@@ -86,7 +91,7 @@ class MyDriver(Driver):
             self.period_end_time = t + EVAL_TIME
             self.period_start_dist = carstate.distance_raced
             self.first_evaluation = False
-
+            self.init_time = t + 1
             print('Evaluating %s:'%self.PATH_TO_NEURAL_NET)
 
 
@@ -110,6 +115,16 @@ class MyDriver(Driver):
         else:
             self.is_stopped = False
 
+
+        # reward fitness for being within 15 degress:
+        if np.abs(sensor_ANGLE_TO_TRACK_AXIS) < 0.2618:
+            self.fitness += 0.05
+
+        # reward if in center of road:
+        if np.abs(sensor_TRACK_POSITION) < 0.2:
+            self.fitness += 0.05
+
+
         """
         Process Inputs.
 
@@ -124,9 +139,9 @@ class MyDriver(Driver):
             self.is_stopped = False
             print(self.RECOVER_MSG)
             print('Stopped for 3 seconds...')
+            self.fitness -= 100
 
         if self.recovering:
-            # self.simpleDriver(carstate, command)
             self.simpleDriver(sensor_data, carstate, command)
 
             if np.abs(sensor_TRACK_POSITION) < 1:
@@ -152,16 +167,18 @@ class MyDriver(Driver):
                 self.warm_up = False
 
         else:
-            if np.abs(sensor_TRACK_POSITION) > 1:
-                # Off track, steer back into track with 0.0 accel (i.e. use momentum)
 
-                # output = self.returnToTrack(sensor_ANGLE_TO_TRACK_AXIS, sensor_TRACK_POSITION)
+            '''
+            Drive using Neural Net
+            '''
+
+            if np.abs(sensor_TRACK_POSITION) > 1:
                 if self.off_track == False:
                     print("### OFF ROAD ###")
                     self.off_time = t
 
                 self.off_track = True
-                self.fitness -= 0.1
+                self.fitness -= 0.05
 
                 if t > self.off_time + 3:
                     # haven't recovered in 3 seconds
@@ -170,7 +187,6 @@ class MyDriver(Driver):
                     self.recovering = True
                     print(self.RECOVER_MSG)
 
-
             else:
                 self.off_track = False
 
@@ -178,25 +194,16 @@ class MyDriver(Driver):
             if use_pca:
                 y = PCA.convert(x.T)
                 sensor_data += list(y)
-                # print(sensor_data)
             else:
                 sensor_data += list(x)
 
-            # use MultiLayerPerceptron
-            # output = neuralNet.restore_MLP_and_predict(sensor_data, self.PATH_TO_NEURAL_NET)
-
-
             # use EchoStateNet
 
-
-            # output = neuralNet.restore_ESN_and_predict(sensor_data, self.PATH_TO_NEURAL_NET,continuation=True)
             try:
                 output = self.esn.predict(sensor_data,continuation=True)
-                # print('esn already loaded')
             except:
-                pass
-            #     self.esn = neuralNet.restore_ESN(self.PATH_TO_NEURAL_NET)
-            #     output = self.esn.predict(sensor_data,continuation=True)
+                self.esn = neuralNet.restore_ESN(self.PATH_TO_NEURAL_NET)
+                output = self.esn.predict(sensor_data,continuation=True)
 
 
             if output[0] > 0:
@@ -205,23 +212,40 @@ class MyDriver(Driver):
             else:
                 accel = 0.0
                 brake = min(max(-output[0],0),1)
+                self.fitness -= 0.1
 
             steer = min(max(output[1],-1),1)
-
-            # print('Speed: %.2f, Track Position: %.2f, Angle to Track: %.2f\n'%(sensor_data[0], sensor_data[1], sensor_data[2]))
-            # print('Accelrator: %.2f, Brake: %.2f, Steering: %.2f'%(accel, brake, steer))
-            # print('Field View:')
-            # print(''.join('{:3f}, '.format(x) for x in sensor_data[3:]))
-
-
 
             """
             Apply Accelrator, Brake and Steering Commands from the neural net
             """
 
-            command.accelerator = accel
-            command.brake = brake
-            command.steering = steer
+            if self.train_overtaking:
+                # reduce range to within 10m
+                opponents = np.array(carstate.opponents)
+                opponents = np.minimum(10, opponents)
+
+                if min(opponents) < 10:
+                    # opponent nearby, engage overtaking network
+                    input2 = [output[0], steer]
+                    input2 += list(opponents / 10)
+
+                    ############################################
+                    # CODE TO ALTER OUTPUTS
+                    ############################################
+
+
+
+
+            # for the first second do not listen to the network
+            # this allows it to initate it's state
+
+            if t > self.init_time:
+                command.accelerator = accel
+                command.brake = brake
+                command.steering = steer
+            else:
+                self.simpleDriver(sensor_data, carstate, command)
 
 
         """
@@ -247,14 +271,14 @@ class MyDriver(Driver):
 
     ############################################################################
     #
-    #  Simple Driver Function for Training
+    #  Simple Driver Function for Recovery
     #
     ############################################################################
     stuck = 0
 
     def isStuck(self, angle, carstate):
 
-        if (carstate.speed_x < 3) & (np.abs(carstate.distance_from_center) < 0.7):
+        if (carstate.speed_x < 3) & (np.abs(carstate.distance_from_center) > 0.7) & (np.abs(angle) > 20/180*np.pi):
         # if (np.abs(angle) > 30/180*np.pi) & (carstate.speed_x < 5):
             if (self.stuck > 100) & (angle * carstate.distance_from_center < 0.0):
                 return True
@@ -301,10 +325,11 @@ class MyDriver(Driver):
         speed_error = 1.0025 * target_speed * MPS_PER_KMH - carstate.speed_x
 
         if speed_error > 0:
-            if carstate.speed_x > 0:
+            if carstate.speed_x >= 0:
                 if np.abs(carstate.distance_from_center) > 1:
                     command.accelerator = 0.3
                 else:
+                    # command.brake = 1.0
                     command.accelerator = 0.6
             else:
                 command.accelerator = 1
