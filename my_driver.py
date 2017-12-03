@@ -32,21 +32,39 @@ class MyDriver(Driver):
 
 
         """
-        launch torcs practice race when ./start.sh is executed
+        launch torcs practice race when ./start.sh is executed (if torcs is not already running)
         comment out for normal use of torcs
         """
-        torcs_command = ["torcs","-r",os.path.abspath("practice.xml")]
-        self.torcs_process = subprocess.Popen(torcs_command)
+        """
+        if not os.path.isfile('torcs_process.txt'):
+            torcs_command = ["torcs","-r",os.path.abspath("./EA_current_config_file/practice.xml")]
+            #torcs_command = ["torcs","-r",os.path.abspath("practice.xml")]
+            self.torcs_process = subprocess.Popen(torcs_command)
+
+            with open('./torcs_process.txt', 'w') as file:
+                file.write('running torcs process')
+            second_car_command = ["./start.sh","-p","3002"]
+            subprocess.Popen(second_car_command)
+        #torcs_output = subprocess.check_output(torcs_command)
+        """
+        self.use_simple_driver = False
+        self.use_pca = False
+        self.use_mlp_opponents = True
+
+        self.previous_position = 1
+
+
+
 
 
     def drive(self, carstate: State):
+
         # stdout.flush()
 
         t = time.time()
         # print("\033c")
 
-        use_simple_driver = False
-        use_pca = False
+
 
         command = Command()
 
@@ -77,7 +95,7 @@ class MyDriver(Driver):
         # print(inputs.size())
 
 
-        if use_simple_driver:
+        if self.use_simple_driver:
             self.simpleDriver(carstate, command)
             print("SELF DRIVING")
 
@@ -96,8 +114,10 @@ class MyDriver(Driver):
             # if use_pca:
             #PATH_TO_NEURAL_NET = "./trained_nn/mlp_pca.pkl"
 
+            PATH_TO_MLP = "./mlp_opponents.pkl"
+
             x = np.array(sensor_TRACK_EDGES) / 200
-            if use_pca:
+            if self.use_pca:
                 y = PCA.convert(x.T)
                 sensor_data += list(y)
                 # print(sensor_data)
@@ -118,6 +138,26 @@ class MyDriver(Driver):
             except:
                 self.esn = neuralNet.restore_ESN(PATH_TO_NEURAL_NET)
                 output = self.esn.predict(sensor_data,continuation=True)
+
+
+
+            # modifiy ESN output based on the opponents data
+            # only if car is not racing at the first position
+            if self.use_mlp_opponents and carstate.race_position > 1:
+                opponents_data = carstate.opponents
+
+
+                # if closest opponent is less than 10m away, use mlp to adjust outputs
+                if min(opponents_data) < 10:
+                    mlp_input = [output[0],output[1]]
+                    print(opponents_data)
+                    for sensor in opponents_data:
+                        mlp_input.append(sensor/10.0) # normalize opponents_data to [0,1]
+
+                    #mlp = neuralNet.restore_MLP(PATH_TO_MLP)
+                    mlp = neuralNet.MLP(len(mlp_input), 20, 2, np.random.rand(len(mlp_input)+1,20), np.random.rand(21,2))
+                    output = mlp.predict(np.asarray(mlp_input))
+
 
 
 
@@ -176,15 +216,25 @@ class MyDriver(Driver):
         write data for evaluation to file 'simulation_log.txt'
         """
         with open('./simulation_log.txt', 'a') as file:
-            file.write('current_lap_time: '+str(carstate.current_lap_time)+"\n")
+            file.write('current_lap_time: '+str(carstate.current_lap_time)+'\n')
             if carstate.distance_from_start <= carstate.distance_raced:
-                file.write('distance_from_start: '+str(carstate.distance_from_start)+"\n")
+                file.write('distance_from_start: '+str(carstate.distance_from_start)+'\n')
             else:
                 file.write('distance_from_start: 0 \n')
 
+            # if overtaking was successful
+            if carstate.race_position > self.previous_position:
+                file.write('overtaking successful \n')
+
+            file.write('damage: '+str(carstate.damage)+'\n')
+            file.write('distance from center: '+str(carstate.distance_from_center)+'\n')
+
+            file.write('distance to opponent: '+str(min(carstate.opponents))+'\n')
+
+
+        self.previous_position = carstate.race_position
 
         return command
-
 
 
 
