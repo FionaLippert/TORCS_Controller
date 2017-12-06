@@ -32,6 +32,9 @@ class MyDriver(Driver):
     stopped_time = 0   # if the car is still for 3 secs go into Recovery mode
     init_time = 0   # only listen to the network after 1 second to initialise the ESN
 
+    SPEED_LIMIT_NORMAL = 110
+    SPEED_LIMIT_CAREFUL = 50
+    SPEED_LIMIT_OVERTAKE = 140
 
 
     """
@@ -45,7 +48,7 @@ class MyDriver(Driver):
         set the initialization mode
         """
         self.launch_torcs = False
-        self.launch_torcs_and_second_driver = True
+        self.launch_torcs_and_second_driver = False
 
         """
         these parameters determine which controllers to use
@@ -59,11 +62,11 @@ class MyDriver(Driver):
         self.load_w_out_from_file = False
         self.use_mlp_opponents = True
 
-        self.PATH_TO_ESN = "./trained_nn/esn.pkl"
+        self.PATH_TO_ESN = "./trained_nn/evesn1440.pkl"
         self.PATH_TO_W_OUT = "./w_out.npy"
         self.PATH_TO_MLP = "./trained_nn/mlp_opponents.pkl"
 
-
+        self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
 
         """
@@ -78,6 +81,12 @@ class MyDriver(Driver):
             ProportionalController(3.7),
         )
         self.data_logger = DataLogWriter() if logdata else None
+
+        # if not os.path.isfile('./pheromones.txt'):
+        # clear the pheromones on start up / create file
+        with open('./pheromones.txt', 'w') as file:
+            file.write('')
+
 
 
         """
@@ -94,7 +103,7 @@ class MyDriver(Driver):
         elif self.launch_torcs_and_second_driver:
 
             # assure that TORCS is not launched again when the second car is initialized
-            
+
             if not os.path.isfile('torcs_process.txt'):
                 torcs_command = ["torcs","-r",os.path.abspath("./config_files/current_config_file/config.xml")]
                 self.torcs_process = subprocess.Popen(torcs_command)
@@ -242,8 +251,15 @@ class MyDriver(Driver):
             if np.abs(sensor_TRACK_POSITION) > 1:
                 if self.off_track == False:
                     #print("### OFF ROAD ###")
+
+                    # write to pheromone.txt warning team mate:
+                    self.drop_pheromone(carstate.distance_from_start)
+
+
                     with open('./simulation_log.txt', 'a') as file:
                         file.write('driver %.0f off road\n'%carstate.race_position)
+                    file.close()
+
                     self.off_time = t
 
                 self.off_track = True
@@ -324,8 +340,29 @@ class MyDriver(Driver):
             determine if car should accelerate or brake
             """
 
+            # check if near any difficult positions:
+            pheromones = np.loadtxt(open('./pheromones.txt', 'rb'), ndmin=1)
+
+            if pheromones.size > 0:
+                for p in pheromones:
+                    dist = float(p) - carstate.distance_from_start
+                    if np.abs(dist) < 100:
+                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_CAREFUL
+                        # print('### CAREFUL MODE ###')
+                        break
+                else:
+                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+
+            else:
+                # print('### NORMAL MODE ###')
+                self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+
+
             if output[0] > 0:
-                accel = min(max(output[0],0),1)
+                if sensor_SPEED < self.CURRENT_SPEED_LIMIT:
+                    accel = min(max(output[0],0),1)
+                else:
+                    accel = 0
                 brake = 0.0
             else:
                 accel = 0.0
@@ -420,6 +457,11 @@ class MyDriver(Driver):
         return command
 
 
+    def drop_pheromone(self, dist):
+        with open('./pheromones.txt', 'a') as file:
+            file.write(str(dist) + '\n')
+        file.close()
+        return
 
 
 
@@ -532,111 +574,3 @@ class MyDriver(Driver):
         command.gear = 1
 
         return
-
-
-
-
-
-
-
-    ############################################################################
-    #
-    #  Simple Driver Function for Training
-    #
-    ############################################################################
-
-    # def simpleDriver(self, carstate, command):
-    #
-    #     steering = self.steer(carstate, 0.0, command)
-    #
-    #     ACC_LATERAL_MAX = 6400 * 5
-    #     v_x = min(80, math.sqrt(ACC_LATERAL_MAX / abs(command.steering)))
-    #     #v_x = 80
-    #
-    #     acceleration = self.accelerate(carstate, v_x, command)
-    #
-    #     command_data = [0,0,0] # gas, brake, steering
-    #     if acceleration > 0:
-    #         command_data[0] = acceleration
-    #     else:
-    #         command_data[1] = acceleration
-    #     command_data[2] = steering
-    #
-    #     df = pd.DataFrame([command_data+sensor_data,])
-    #     #h = ['ACCELERATION','BRAKE','STEERING','SPEED','TRACK_POSITION','ANGLE_TO_TRACK_AXIS','TRACK_EDGE_0','TRACK_EDGE_1','TRACK_EDGE_2','TRACK_EDGE_3','TRACK_EDGE_4','TRACK_EDGE_5','TRACK_EDGE_6','TRACK_EDGE_7','TRACK_EDGE_8','TRACK_EDGE_9','TRACK_EDGE_10','TRACK_EDGE_11','TRACK_EDGE_12','TRACK_EDGE_13','TRACK_EDGE_14','TRACK_EDGE_15','TRACK_EDGE_16','TRACK_EDGE_17','TRACK_EDGE_18']
-    #     file_name = './collected_data.csv'
-    #     if os.path.isfile(file_name):
-    #         df.to_csv(file_name,mode='a',header=False,index=False)
-    #     else:
-    #         #df.to_csv(file_name,header=h,index=False)
-    #         df.to_csv(file_name,header=False,index=False)
-    #
-    #
-    #     return command
-    #
-    # def accelerate(self, carstate, target_speed, command):
-    #     # compensate engine deceleration, but invisible to controller to
-    #     # prevent braking:
-    #     speed_error = 1.0025 * target_speed * MPS_PER_KMH - carstate.speed_x
-    #     acceleration = self.acceleration_ctrl.control(
-    #         speed_error,
-    #         carstate.current_lap_time
-    #     )
-    #
-    #     # stabilize use of gas and brake:
-    #     acceleration = math.pow(acceleration, 3)
-    #
-    #     if acceleration > 0:
-    #         if abs(carstate.distance_from_center) >= 1:
-    #             # off track, reduced grip:
-    #             acceleration = min(0.4, acceleration)
-    #
-    #         new_acceleration = min(acceleration, 1)
-    #         command.accelerator = new_acceleration
-    #
-    #
-    #     else:
-    #         new_acceleration = min(-acceleration, 1)
-    #         command.brake = new_acceleration
-    #
-    #
-    #     return new_acceleration
-    #
-    # def steer(self, carstate, target_track_pos, command):
-    #     steering_error = target_track_pos - carstate.distance_from_center
-    #     new_steering = self.steering_ctrl.control(
-    #         steering_error,
-    #         carstate.current_lap_time
-    #     )
-    #     command.steering = new_steering
-    #     return new_steering
-    #
-    # def returnToTrack(self, angle, position):
-    #     # returns commands that should bring car back onto the road
-    #     # NEEDS WORK
-    #     target_angle = np.pi / 4
-    #
-    #     if position < -1:
-    #         if (angle < np.pi / 2) & (angle > -target_angle):
-    #             st = 1
-    #         else:
-    #             st = -1
-    #
-    #         dif = np.abs(-target_angle - angle)
-    #         st *= min(dif, target_angle) / target_angle
-    #
-    #     else:
-    #         if (angle < target_angle) & (angle > -np.pi / 2):
-    #             st = -0.6
-    #         else:
-    #             st = 0.6
-    #
-    #         dif = np.abs(target_angle - angle)
-    #         st *= min(dif, target_angle) / target_angle
-    #
-    #     # st = np.abs(sensor_TRACK_POSITION) - 1
-    #     # st *= - 1.5 * np.sign(sensor_TRACK_POSITION)
-    #     ac = 0.2
-    #     br = 0.0
-    #
-    #     return [ac, br, st]
