@@ -60,7 +60,8 @@ class MyDriver(Driver):
         """
         self.use_simple_driver = False
         self.load_w_out_from_file = False
-        self.use_mlp_opponents = True
+        self.use_mlp_opponents = False
+        self.use_team = True
 
         self.PATH_TO_ESN = "./trained_nn/evesn1440.pkl"
         self.PATH_TO_W_OUT = "./w_out.npy"
@@ -138,6 +139,8 @@ class MyDriver(Driver):
         """
 
         self.previous_position = 0
+        self.ID = 0
+        self.is_first = True
         self.active_mlp = False
         self.current_damage = 0
         self.accel_deviation = 0
@@ -154,6 +157,37 @@ class MyDriver(Driver):
         # at the begin of the race: determine on which position the car starts
         if self.previous_position == 0:
             self.previous_position = carstate.race_position
+            self.ID = carstate.race_position
+            self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
+
+            with open(self.position_file, 'w') as file:
+                print(str(self.ID)+":"+str(carstate.race_position))
+                file.write(str(carstate.race_position)+"\n")
+
+
+        if self.use_team:
+            """
+            determine position relative to team mate
+            """
+
+            for root, dirs, files in os.walk("./team_communication/positions"):
+                for filename in files:
+                    if filename != str(self.ID)+'.txt':
+
+                        team_mate_pos = np.loadtxt("./team_communication/positions/"+filename, ndmin=1)
+                        self.team_mate_pos = int(team_mate_pos[-1])
+
+            if carstate.race_position < self.team_mate_pos:
+                self.is_first = True
+            else:
+                self.is_first = False
+
+
+            if carstate.race_position != self.previous_position:
+                # log the changed race position
+                with open(self.position_file, 'a') as file:
+                    file.write(str(carstate.race_position)+"\n")
+
 
         t = carstate.current_lap_time
         if t < self.last_cur_lap_time:
