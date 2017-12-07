@@ -200,7 +200,6 @@ class MyDriver(Driver):
         sensor_data += list(x)
 
 
-
         if self.is_stopped & (t > self.stopped_time + 3) & (not self.recovering):
             self.recovering = True
             self.is_stopped = False
@@ -209,7 +208,6 @@ class MyDriver(Driver):
 
             with open('./simulation_log.txt', 'a') as file:
                 file.write('stopped for 3 seconds\n')
-
 
 
         if self.recovering:

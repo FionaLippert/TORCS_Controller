@@ -13,6 +13,8 @@ import pandas as pd
 import numpy as np
 import os.path
 from sys import stdout
+import subprocess
+import psutil
 
 class MyDriver(Driver):
     RECOVER_MSG = '+-'*6 + ' RECOVERING ' + '-+'*6
@@ -20,6 +22,7 @@ class MyDriver(Driver):
     last_cur_lap_time = 0
     period_end_time = -1
     period_start_dist = 0
+    period_distance_raced = 0
     first_evaluation = True
     fitness = 0
     off_track = False   # check if off track
@@ -32,10 +35,31 @@ class MyDriver(Driver):
     init_time = 0   # only listen to the network after 1 second to initialise the ESN
     train_overtaking = False
 
+    finished_evaluation = True
+
+    def kill(proc_pid):
+        process = psutil.Process(proc_pid)
+        for proc in process.children(recursive=True):
+            proc.kill()
+        process.kill()
+
+    def __init__(self):
+
+        """
+        LAUNCH TORCS WHEN ./start_evolve.sh IS CALLED
+        """
+        torcs_command = ["torcs", "-t", "100000", "-nofuel", "-nolaptime", "-nodamage", "-r", "/home/student/Documents/torcs-server/torcs-client/evolver/race_config/quickrace.xml"]
+        self.torcs_process = subprocess.Popen(torcs_command)
+
+
+
     def drive(self, carstate: State):
 
+        # if len(os.listdir('./evolver/kill_torcs/')) > 0:
+        #     self.kill(self.torcs_process.pid)
+
         # evaluation period in seconds
-        EVAL_TIME = 20
+        EVAL_TIME = 90
 
         t = carstate.current_lap_time
         if t < self.last_cur_lap_time:
@@ -54,47 +78,73 @@ class MyDriver(Driver):
         '''
         Handeling Evaluation Change:
         '''
+
         if t > self.period_end_time and not self.recovering:
             # END CURRENT EVALUATION PERIOD:
             if self.first_evaluation:
                 # check the right files and folders are available:
-                if not os.path.isdir('./pool/'):
-                    print('NO POOL FOLDER FOUND')
-                    return command
-
-                if not os.path.exists('./log.csv'):
-                    print('Creating log.csv...')
-                    open('./log.csv', 'w').close()
-            else:
+                # if not os.path.isdir('./evolver/pool/'):
+                #     print('NO POOL FOLDER FOUND')
+                #     return command
+                #
+                # if not os.path.exists('./log.csv'):
+                #     print('Creating log.csv...')
+                #     open('./log.csv', 'w').close()
+                pass
+            elif self.esn != None:
                 # FITNESS CALCULATION
                 # currently average speed (in MPS)
                 # penalties for off track and recovery, and using brake too much
                 # bonus points for staying in middle of track and keeping small
                 # angle
 
-                self.fitness += (carstate.distance_raced - self.period_start_dist) / EVAL_TIME
+                # self.fitness += (carstate.distance_raced - self.period_start_dist)
+
+                self.fitness += self.period_distance_raced
 
                 # log the performance:
-                nn_id = int(self.PATH_TO_NEURAL_NET[12:-4])
-                log = open('./log.csv', 'a')
-                log.write('%s, %.2f\n'%(nn_id, self.fitness))
-                log.close()
-                print('Fitness Score %.2f logged\n'%(self.fitness))
+                # save the network with the fitness in the title:
+                # new_path = './evolver/queue/%s.pkl'%self.fitness
+                # os.system('mv %s %s'%(self.PATH_TO_NEURAL_NET, new_path))
+
+                self.esn.save('./evolver/queue/%.2f.pkl'%self.fitness)
+
+                # with open(new_path, 'wb') as file:
+                #     pkl.dump(self,file)
+
+                # nn_id = int(self.PATH_TO_NEURAL_NET[12:-4])
+                # log = open('./log.csv', 'a')
+                # log.write('%s, %.2f\n'%(nn_id, self.fitness))
+                # log.close()
+                if self.fitness > 0:
+                    print('Fitness Score \033[7m%.2f\033[0m logged\n'%(self.fitness))
+                else:
+                    print('Fitness Score %.2f logged\n'%(self.fitness))
+
 
             # START NEXT EVALUATION PERIOD:
             # load random net:
-            pool = os.listdir('./pool')
-            self.PATH_TO_NEURAL_NET = './pool/' + str(np.random.choice(pool, 1)[0])
-            self.esn = neuralNet.restore_ESN(self.PATH_TO_NEURAL_NET)
+            pool = os.listdir('./evolver/driver_esn/')
+            if len(pool) > 0:
+                self.PATH_TO_NEURAL_NET = './evolver/driver_esn/' + str(np.random.choice(pool, 1)[0])
+                self.esn = neuralNet.restore_ESN(self.PATH_TO_NEURAL_NET)
+                # remove ESN so no other driver can use it:
+                os.system('rm %s'%self.PATH_TO_NEURAL_NET)
+                print('Evaluating %s:'%self.PATH_TO_NEURAL_NET)
+
+            else:
+                # no choice of ESNs, use robot driver
+                # print('No ESNS :(')
+                self.esn = None
+                self.recovering = True
+
             # reset values:
             self.fitness = 0
             self.period_end_time = t + EVAL_TIME
             self.period_start_dist = carstate.distance_raced
+            self.period_distance_raced = 0
             self.first_evaluation = False
             self.init_time = t + 1
-            print('Evaluating %s:'%self.PATH_TO_NEURAL_NET)
-
-
 
         """
         Collect Input Data.
@@ -118,11 +168,11 @@ class MyDriver(Driver):
 
         # reward fitness for being within 15 degress:
         if np.abs(sensor_ANGLE_TO_TRACK_AXIS) < 0.2618:
-            self.fitness += 0.05
+            self.fitness += 1
 
         # reward if in center of road:
         if np.abs(sensor_TRACK_POSITION) < 0.2:
-            self.fitness += 0.05
+            self.fitness += 1
 
 
         """
@@ -137,9 +187,10 @@ class MyDriver(Driver):
         if self.is_stopped & (t > self.stopped_time + 3) & (not self.recovering):
             self.recovering = True
             self.is_stopped = False
-            print(self.RECOVER_MSG)
-            print('Stopped for 3 seconds...')
-            self.fitness -= 100
+            # print(self.RECOVER_MSG)
+            # print('Stopped for 3 seconds...')
+            self.fitness -= 1000
+            self.finished_evaluation = True
 
         if self.recovering:
             self.simpleDriver(sensor_data, carstate, command)
@@ -148,7 +199,7 @@ class MyDriver(Driver):
                 # recovered!
                 # self.stuck = 0
                 if not self.warm_up:
-                    print('Back on track...')
+                    # print('Back on track...')
                     self.recovered_time = t
                     self.warm_up = True
 
@@ -159,8 +210,8 @@ class MyDriver(Driver):
                     self.recovering = False
                     self.warm_up = False
                     self.period_end_time = t  # will end evaluation period
-                    print('Recovered and starting new evaulation')
-                    print('+-'*18)
+                    # print('Recovered and starting new evaulation')
+                    # print('+-'*18)
 
             else:
                 self.off_track = True
@@ -174,21 +225,24 @@ class MyDriver(Driver):
 
             if np.abs(sensor_TRACK_POSITION) > 1:
                 if self.off_track == False:
-                    print("### OFF ROAD ###")
+                    # print("### OFF ROAD ###")
+
                     self.off_time = t
 
                 self.off_track = True
-                self.fitness -= 0.05
+                self.fitness -= 1
 
-                if t > self.off_time + 3:
+                if t > self.off_time + 5:
                     # haven't recovered in 3 seconds
                     # get back on road and start new evaluation
-                    self.fitness -= 100   # penalty
+                    self.fitness -= 1000   # penalty
                     self.recovering = True
-                    print(self.RECOVER_MSG)
+                    self.finished_evaluation = True
+                    # print(self.RECOVER_MSG)
 
             else:
                 self.off_track = False
+                self.period_distance_raced = carstate.distance_raced - self.period_start_dist
 
             x = np.array(sensor_TRACK_EDGES) / 200
             if use_pca:
@@ -202,8 +256,10 @@ class MyDriver(Driver):
             try:
                 output = self.esn.predict(sensor_data,continuation=True)
             except:
+                # pass
                 self.esn = neuralNet.restore_ESN(self.PATH_TO_NEURAL_NET)
                 output = self.esn.predict(sensor_data,continuation=True)
+                print('Loaded ' + self.PATH_TO_NEURAL_NET)
 
 
             if output[0] > 0:
@@ -212,9 +268,22 @@ class MyDriver(Driver):
             else:
                 accel = 0.0
                 brake = min(max(-output[0],0),1)
-                self.fitness -= 0.1
+
+                if sensor_SPEED < 10:
+                    self.fitness -= 2
+                else:
+                    if np.abs(sensor_ANGLE_TO_TRACK_AXIS) > 0.2618:
+                        self.fitness += 1
 
             steer = min(max(output[1],-1),1)
+
+            if np.abs(steer) < 0.1 and x[9] > 0.9:
+                self.fitness += 1
+
+            if np.abs(steer) > 0.8 and x[9] < 0.2:
+                self.fitness += 1
+
+
 
             """
             Apply Accelrator, Brake and Steering Commands from the neural net
