@@ -45,20 +45,27 @@ class MyDriver(Driver):
 
 
         """
+        set the initialization mode
+        """
+        self.launch_torcs = True
+        self.launch_torcs_and_second_driver = False
+
+        """
         these parameters determine which controllers to use
 
         use_simple_driver: if True, a simple hard coded driving logic is applied
                             else, the ESN saved at PATH_TO_ESN is used to predict the commands
+        load_w_out_from_file: if True, the readout weights of the ESN are overwritten by those saved at PATH_TO_W_OUT
         use_mlp_opponents: if True, the output of the ESN is adjusted by the Mulit-Layer Perceptron saved at PATH_TO_MLP
-        use_team: if True, pheromones are dropped, the team mate at second position blocks opponents
-        use_overtaking_assistant: overtaking is supported by motivating the ESN to steer around opponents in front of it
         """
         self.use_simple_driver = False
+        self.load_w_out_from_file = False
         self.use_mlp_opponents = True
         self.use_team = False
-        self.use_overtaking_assistant = True
+        self.use_overtaking_strategy = True
 
         self.PATH_TO_ESN = "./trained_nn/evesn1440.pkl"
+        self.PATH_TO_W_OUT = "./w_out.npy"
         self.PATH_TO_MLP = "./trained_nn/mlp_opponents.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
@@ -85,6 +92,50 @@ class MyDriver(Driver):
 
 
         """
+        launch torcs practice race when ./start.sh is executed (if torcs is not already running)
+        comment out for normal use of torcs
+        """
+
+        # automatically start TORCS when './start.sh' is executed
+        if self.launch_torcs:
+            torcs_command = ["torcs","-r",os.path.abspath("./config_files/current_config_file/config.xml")]
+            self.torcs_process = subprocess.Popen(torcs_command)
+
+        # automatically start TORCS with two drivers when './start.sh' is executed
+        elif self.launch_torcs_and_second_driver:
+
+            # assure that TORCS is not launched again when the second car is initialized
+
+            if not os.path.isfile('torcs_process.txt'):
+                torcs_command = ["torcs","-r",os.path.abspath("./config_files/current_config_file/config.xml")]
+                self.torcs_process = subprocess.Popen(torcs_command)
+
+                with open('./torcs_process.txt', 'w') as file:
+                    file.write('running torcs process')
+
+                second_car_command = ["./start.sh","-p","3002"]
+                subprocess.Popen(second_car_command)
+            else:
+                line = ''
+                with open('./torcs_process.txt', 'r') as file:
+                    line = file.readline()
+                if not line.find('running torcs process') > -1:
+
+                    torcs_command = ["torcs","-r",os.path.abspath("./config_files/current_config_file/config.xml")]
+                    self.torcs_process = subprocess.Popen(torcs_command)
+
+                    with open('./torcs_process.txt', 'w') as file:
+                        file.write('running torcs process')
+
+                    second_car_command = ["./start.sh","-p","3002"]
+                    subprocess.Popen(second_car_command)
+                else:
+                    with open('./torcs_process.txt', 'w') as file:
+                        file.write('')
+
+
+
+        """
         some global variables
         """
 
@@ -92,6 +143,7 @@ class MyDriver(Driver):
         self.ID = 0
         self.is_first = True
         self.active_mlp = False
+        self.current_damage = 0
         self.accel_deviation = 0
         self.steering_deviation = 0
 
@@ -107,12 +159,11 @@ class MyDriver(Driver):
         if self.previous_position == 0:
             self.previous_position = carstate.race_position
             self.ID = carstate.race_position
+            self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
 
-            if use_team:
-                self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
-
-                with open(self.position_file, 'w') as file:
-                    file.write(str(carstate.race_position)+"\n")
+            with open(self.position_file, 'w') as file:
+                print(str(self.ID)+":"+str(carstate.race_position))
+                file.write(str(carstate.race_position)+"\n")
 
 
         if self.use_team:
@@ -191,6 +242,9 @@ class MyDriver(Driver):
             #print(self.RECOVER_MSG)
             #print('Stopped for 3 seconds...')
 
+            with open('./simulation_log.txt', 'a') as file:
+                file.write('stopped for 3 seconds\n')
+
 
 
         if self.recovering:
@@ -237,6 +291,11 @@ class MyDriver(Driver):
                         # write to pheromone.txt warning team mate:
                         self.drop_pheromone(carstate.distance_from_start)
 
+
+                    with open('./simulation_log.txt', 'a') as file:
+                        file.write('driver %.0f off road\n'%carstate.race_position)
+                    file.close()
+
                     self.off_time = t
 
                 self.off_track = True
@@ -250,6 +309,8 @@ class MyDriver(Driver):
 
             else:
                 self.off_track = False
+                with open('./simulation_log.txt', 'a') as file:
+                    file.write('driver %.0f on road\n'%carstate.race_position)
 
 
 
@@ -274,7 +335,7 @@ class MyDriver(Driver):
             """
             overtaking strategy
             """
-            if self.use_overtaking_assistant:
+            if self.use_overtaking_strategy:
 
                 closest_opponent = np.argmin(carstate.opponents)
                 if (closest_opponent > 5 and closest_opponent < 12) or (closest_opponent > 24 and closest_opponent < 30):
@@ -438,8 +499,40 @@ class MyDriver(Driver):
                 command.gear = carstate.gear or 1
 
 
+        """
+        write data for evaluation to the file 'simulation_log.txt'
+        """
 
-        # save position information for the next simulation step
+        with open('./simulation_log.txt', 'a') as file:
+
+            file.write('##################################\n')
+            file.write('race position: %.0f\n'%carstate.race_position)
+            file.write('current_lap_time: '+str(carstate.current_lap_time)+'\n')
+            if carstate.distance_from_start <= carstate.distance_raced:
+                file.write('distance_from_start: '+str(carstate.distance_from_start)+'\n')
+            else:
+                file.write('distance_from_start: 0 \n')
+
+            # if overtaking was successful
+            if self.active_mlp and carstate.race_position > self.previous_position:
+                file.write('overtaking successful \n')
+
+            #file.write('damage: '+str(carstate.damage)+'\n')
+            file.write('distance from center: '+str(carstate.distance_from_center)+'\n')
+
+            file.write('distance to opponent: '+str(min(carstate.opponents))+'\n')
+
+            file.write('angle: '+str(carstate.angle)+'\n')
+
+            if self.active_mlp and self.current_damage<carstate.damage:
+                file.write('MLP damage \n')
+            if self.active_mlp:
+                file.write('MLP d from center: '+str(carstate.distance_from_center)+'\n')
+                file.write('MLP accelerator deviation: '+str(self.accel_deviation)+'\n')
+                file.write('MLP steering deviation: '+str(self.steering_deviation)+'\n')
+
+        # save damage and position information for the next simulation step
+        self.current_damage = carstate.damage
         self.previous_position = carstate.race_position
 
         return command

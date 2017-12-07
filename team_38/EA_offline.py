@@ -133,7 +133,7 @@ def evaluate_w_out(individual):
 """
 evaluation of MLP in a simulation with two cars racing against each other
 """
-def evaluate_MLP(individual):
+def evaluate_MLP(individual, use_bots=False):
 
     w_1 = numpy.asarray(individual[:(D_IN_MLP+1)*D_H_MLP]).reshape((D_IN_MLP+1,D_H_MLP))
     w_2 = numpy.asarray(individual[(D_IN_MLP+1)*D_H_MLP:]).reshape((D_H_MLP+1,D_OUT_MLP))
@@ -145,9 +145,12 @@ def evaluate_MLP(individual):
     fitness = 0
     for i in range(3):
         try:
-            simulate_and_evaluate.simulate_track_two_cars(i)
-            overtaking, opponents, dist_from_center, damage, MLP_accelerator_dev, MLP_steering_dev = simulate_and_evaluate.get_fitness_after_time(60.0, mlp=True)
-            fitness += (0.01*dist_from_center + 0.01*opponents + damage + 0.01*MLP_steering_dev + 0.01*MLP_accelerator_dev - 100*overtaking)
+            #simulate_and_evaluate.simulate_track_two_cars(i, use_bots)
+            simulate_and_evaluate.simulate_track(i, use_bots)
+            overtaking, opponents, dist_from_center, damage, MLP_accelerator_dev, MLP_steering_dev, end_pos, intermediate_pos = simulate_and_evaluate.get_fitness_after_time(60.0, mlp=True)
+            #fitness += (0.01*dist_from_center + 0.01*opponents + damage + 0.01*MLP_steering_dev + 0.01*MLP_accelerator_dev - 100*overtaking)
+
+            fitness += (damage + 0.01*MLP_steering_dev + 0.01*MLP_accelerator_dev + 100*end_position + 100*intermediate_pos - 10*overtaking )
 
             print("overtaking: %.0f"%overtaking)
             print("accumulated distances from center: %.2f"%dist_from_center)
@@ -231,7 +234,7 @@ def createToolbox_w_out():
 
     return toolbox
 
-def createToolbox_MLP():
+def createToolbox_MLP(use_bots=False):
 
     toolbox = base.Toolbox()
 
@@ -241,7 +244,10 @@ def createToolbox_MLP():
     toolbox.register("mate", tools.cxBlend, alpha=0.5) # ref: Eiben Book
     toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.3, indpb=0.2)
     toolbox.register("select", tools.selTournament, tournsize=5)
-    toolbox.register("evaluate", evaluate_MLP)
+    if use_bots:
+        toolbox.register("evaluate", evaluate_MLP, use_bots=True)
+    else:
+        toolbox.register("evaluate", evaluate_MLP, use_bots=False)
 
     return toolbox
 
@@ -314,7 +320,7 @@ def main_w_out():
 ################################################################
 # main function of the EA for evolving MLP weights
 ################################################################
-def main_MLP():
+def main_MLP(use_bots=False):
 
     hof = tools.HallOfFame(10)
     stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -323,7 +329,7 @@ def main_MLP():
     stats.register("min", numpy.min)
     stats.register("max", numpy.max)
 
-    toolbox = createToolbox_MLP()
+    toolbox = createToolbox_MLP(use_bots)
 
     """
     EA parameters
@@ -334,7 +340,7 @@ def main_MLP():
     lam = 50 # number of offspring
     cxpb = 0.0 # crossover probability
     mutpb = 0.8 # mutation probability
-    ngen = 20 # number of generations
+    ngen = 15 # number of generations
 
 
     """
@@ -482,7 +488,7 @@ t_start=''
 
 for i in range(1):
     try:
-        hof, stats = main()
+        hof, stats = main_MLP(use_bots=True)
     except Exception as err:
         # write error info to file
         with open('./error_log.txt', 'a') as f:
@@ -490,6 +496,18 @@ for i in range(1):
             f.write(str(err))
             traceback.print_exc(file=f)
         print('-----------terminated with error!-----------------')
+    """
+    try:
+        hof, stats = main_MLP(use_bots=False)
+    except Exception as err:
+        # write error info to file
+        with open('./error_log.txt', 'a') as f:
+            f.write('-------'+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")+'-------------\n')
+            f.write(str(err))
+            traceback.print_exc(file=f)
+        print('-----------terminated with error!-----------------')
+    """
+
 
 
 ########################################

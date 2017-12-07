@@ -9,6 +9,8 @@ import numpy as np
 
 tracks = ['practice_eroad.xml','practice_dirt4.xml','practice_etrack2.xml']
 tracks_two_cars = ['quickrace_eroad.xml','quickrace_dirt4.xml','quickrace_etrack2.xml']
+tracks_two_cars_with_bots = ['quickrace_eroad_bots2.xml','quickrace_dirt4_bots2.xml','quickrace_etrack2_bots2.xml']
+tracks_with_bots = ['practice_eroad_bots.xml','quickrace_dirt4_bots.xml','quickrace_etrack2_bots.xml']
 
 
 
@@ -38,7 +40,7 @@ def copy_config_file_to_EA_folder(old_file_name, new_file_name,subfolder_name):
     os.system("chmod 777 "+new_dst_file_name)
 
 
-def simulate_track(track_index):
+def simulate_track(track_index, use_bots=False):
 
     # overwrite existing file
     with open('./simulation_log.txt', 'w') as file:
@@ -60,7 +62,7 @@ def simulate_track(track_index):
         os.remove('torcs_process.txt')
 
 
-def simulate_track_two_cars(track_index):
+def simulate_track_two_cars(track_index, use_bots=False):
 
     # overwrite existing file
     with open('./simulation_log.txt', 'w') as file:
@@ -70,7 +72,10 @@ def simulate_track_two_cars(track_index):
     # change config file to use for race
     track_index = min(max(0,track_index),len(tracks_two_cars)-1)
     os.chdir('./config_files')
-    copy_config_file_to_EA_folder(tracks_two_cars[track_index],'config.xml','current_config_file')
+    if use_bots:
+        copy_config_file_to_EA_folder(tracks_two_cars_with_bots[track_index],'config.xml','current_config_file')
+    else:
+        copy_config_file_to_EA_folder(tracks_two_cars[track_index],'config.xml','current_config_file')
     os.chdir('../')
 
     if os.path.isfile('torcs_process.txt'):
@@ -117,6 +122,7 @@ def get_distance_after_time(t):
 
 def get_fitness_after_time(t, mlp=False):
     stop = False
+    intermediate_stop = False
     dist = -1
     overtaking = 0
     dist_from_center = 0
@@ -133,6 +139,9 @@ def get_fitness_after_time(t, mlp=False):
     offroad_1 = True
     offroad_2 = True
 
+    end_pos = np.infty
+    intermediate_pos = np.infty
+
     with open('./simulation_log.txt', 'r') as file:
         for line in file:
 
@@ -143,6 +152,8 @@ def get_fitness_after_time(t, mlp=False):
             if line.find("current_lap_time: ") > -1:
                 if float(line.partition(": ")[2]) > t:
                     stop = True
+                if float(line.partition(": ")[2]) > 0.5*t:
+                    intermediate_stop = True
 
             if stop and line.find("distance_from_start: ") > -1 and dist==-1:
                 dist = float(line.partition(": ")[2])
@@ -199,11 +210,18 @@ def get_fitness_after_time(t, mlp=False):
             if not stop and line.find("driver 2 on road") > -1:
                 offroad_2 = False
 
-            if not stop and not offroad_1 and not offroad_2 and line.find("overtaking successful") > -1:
+            #if not stop and not offroad_1 and not offroad_2 and line.find("overtaking successful") > -1:
+            if not stop and line.find("overtaking successful") > -1:
                 overtaking += 1
 
+            if not stop and line.find("race position") > -1:
+                end_pos = int(line.partition(": ")[2]) - 1
+                if not intermediate_stop:
+                    intermediate_pos = end_pos
+
+
     if mlp:
-        return overtaking, opponents, MLP_dist_from_center, MLP_damage, MLP_accelerator_dev, MLP_steering_dev
+        return overtaking, opponents, MLP_dist_from_center, MLP_damage, MLP_accelerator_dev, MLP_steering_dev, end_pos, intermediate_pos
     else:
         return dist, dist_from_center, stopped, offroad, angle
 
