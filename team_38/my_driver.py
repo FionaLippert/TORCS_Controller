@@ -32,9 +32,9 @@ class MyDriver(Driver):
     stopped_time = 0   # if the car is still for 3 secs go into Recovery mode
     init_time = 0   # only listen to the network after 1 second to initialise the ESN
 
-    SPEED_LIMIT_NORMAL = 110
-    SPEED_LIMIT_CAREFUL = 50
-    SPEED_LIMIT_OVERTAKE = 140
+    SPEED_LIMIT_NORMAL = 80 #110
+    SPEED_LIMIT_CAREFUL = 50 # 50
+    SPEED_LIMIT_OVERTAKE = 140 # 140
 
 
     """
@@ -60,7 +60,9 @@ class MyDriver(Driver):
         """
         self.use_simple_driver = False
         self.load_w_out_from_file = False
-        self.use_mlp_opponents = True
+        self.use_mlp_opponents = False
+        self.use_team = True
+        self.use_overtaking_strategy = True
 
         self.PATH_TO_ESN = "./trained_nn/evesn1440.pkl"
         self.PATH_TO_W_OUT = "./w_out.npy"
@@ -138,6 +140,8 @@ class MyDriver(Driver):
         """
 
         self.previous_position = 0
+        self.ID = 0
+        self.is_first = True
         self.active_mlp = False
         self.current_damage = 0
         self.accel_deviation = 0
@@ -154,6 +158,37 @@ class MyDriver(Driver):
         # at the begin of the race: determine on which position the car starts
         if self.previous_position == 0:
             self.previous_position = carstate.race_position
+            self.ID = carstate.race_position
+            self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
+
+            with open(self.position_file, 'w') as file:
+                print(str(self.ID)+":"+str(carstate.race_position))
+                file.write(str(carstate.race_position)+"\n")
+
+
+        if self.use_team:
+            """
+            determine position relative to team mate
+            """
+
+            for root, dirs, files in os.walk("./team_communication/positions"):
+                for filename in files:
+                    if filename != str(self.ID)+'.txt':
+
+                        team_mate_pos = np.loadtxt("./team_communication/positions/"+filename, ndmin=1)
+                        self.team_mate_pos = int(team_mate_pos[-1])
+
+            if carstate.race_position < self.team_mate_pos:
+                self.is_first = True
+            else:
+                self.is_first = False
+
+
+            if carstate.race_position != self.previous_position:
+                # log the changed race position
+                with open(self.position_file, 'a') as file:
+                    file.write(str(carstate.race_position)+"\n")
+
 
         t = carstate.current_lap_time
         if t < self.last_cur_lap_time:
@@ -250,8 +285,9 @@ class MyDriver(Driver):
                 if self.off_track == False:
                     #print("### OFF ROAD ###")
 
-                    # write to pheromone.txt warning team mate:
-                    self.drop_pheromone(carstate.distance_from_start)
+                    if self.use_team:
+                        # write to pheromone.txt warning team mate:
+                        self.drop_pheromone(carstate.distance_from_start)
 
 
                     with open('./simulation_log.txt', 'a') as file:
@@ -277,8 +313,44 @@ class MyDriver(Driver):
 
 
             """
+            apply team strategy: if the car is behind his team mate, try to block opponents comming from behind
+            """
+            #if self.use_team and not self.is_first:
+            if self.use_team:
+
+                closest_opponent = np.argmin(carstate.opponents)
+                if closest_opponent > 26:
+                    delta = abs(closest_opponent-35) # get values between 0 (if opponent is directly behind) and 8 (if opponent is at to the car's right )
+                    delta /= 8.0 # scale to values between 0 and 1
+                    # delta = 0.2
+                    adjusted_track_position = min(1, sensor_TRACK_POSITION + delta)
+                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
+                if closest_opponent < 9:
+                    delta = closest_opponent/8.0 # scale to values between 0 (if opponent is directly behind) and 1 (if opponent is at to the car's left )
+                    adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
+                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
+
+            """
+            overtaking strategy
+            """
+            if self.use_overtaking_strategy:
+
+                closest_opponent = np.argmin(carstate.opponents)
+                if (closest_opponent > 5 and closest_opponent < 12) or (closest_opponent > 24 and closest_opponent < 30):
+                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_OVERTAKE # increase speed limit to enable fast overtaking
+                if closest_opponent >= 12 and closest_opponent < 18:
+                    delta = 0.3
+                    adjusted_track_position = min(1, sensor_TRACK_POSITION + delta)
+                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer away from the opponent
+                if closest_opponent >= 18 and closest_opponent <= 24:
+                    delta = 0.3
+                    adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
+                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer away from the opponent
+
+
+            """
             load ESN if it is not yet available,
-            predict the driving commands
+            predict the driving command
             """
             try:
                 output = self.esn.predict(sensor_data,continuation=True)
@@ -305,7 +377,6 @@ class MyDriver(Driver):
 
             if self.use_mlp_opponents and carstate.race_position > 1:
                 opponents_data = carstate.opponents
-
 
                 # if closest opponent is less than 10m away, use mlp to adjust outputs
                 if min(opponents_data) < 50:
@@ -338,22 +409,27 @@ class MyDriver(Driver):
             determine if car should accelerate or brake
             """
 
-            # check if near any difficult positions:
-            pheromones = np.loadtxt(open('./pheromones.txt', 'rb'), ndmin=1)
+            if self.use_team:
+                # check if near any difficult positions that have been communicated by pheromones:
+                pheromones = np.loadtxt(open('./pheromones.txt', 'rb'), ndmin=1)
 
-            if pheromones.size > 0:
-                for p in pheromones:
-                    dist = float(p) - carstate.distance_from_start
-                    if np.abs(dist) < 100:
-                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_CAREFUL
-                        # print('### CAREFUL MODE ###')
-                        break
+                if pheromones.size > 0:
+                    for p in pheromones:
+                        dist = float(p) - carstate.distance_from_start
+                        if np.abs(dist) < 100:
+                            self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_CAREFUL
+                            # print('### CAREFUL MODE ###')
+                            break
+                    else:
+                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+
                 else:
+                    # print('### NORMAL MODE ###')
                     self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
-
             else:
                 # print('### NORMAL MODE ###')
                 self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+                
 
 
             if output[0] > 0:
