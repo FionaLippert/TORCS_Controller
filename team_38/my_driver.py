@@ -54,7 +54,7 @@ class MyDriver(Driver):
         use_overtaking_assistant: overtaking is supported by motivating the ESN to steer around opponents in front of it
         """
         self.use_simple_driver = False
-        self.use_mlp_opponents = True
+        self.use_mlp_opponents = False
         self.use_team = False
         self.use_overtaking_assistant = True
 
@@ -108,7 +108,7 @@ class MyDriver(Driver):
             self.previous_position = carstate.race_position
             self.ID = carstate.race_position
 
-            if use_team:
+            if self.use_team:
                 self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
 
                 with open(self.position_file, 'w') as file:
@@ -299,10 +299,6 @@ class MyDriver(Driver):
             except:
                 # load ESN from specified path
                 self.esn = neuralNet.restore_ESN(self.PATH_TO_ESN)
-
-                # if desired, set the ESN readout weights to externally given ones
-                if self.load_w_out_from_file:
-                    self.esn.load_w_out(self.PATH_TO_W_OUT)
 
                 # start a new 'history of states'
                 output = self.esn.predict(sensor_data,continuation=False)
