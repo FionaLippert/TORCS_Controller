@@ -184,13 +184,11 @@ class MyDriver(Driver):
         sensor_data += list(x)
 
 
-
         if self.is_stopped & (t > self.stopped_time + 3) & (not self.recovering):
             self.recovering = True
             self.is_stopped = False
             #print(self.RECOVER_MSG)
             #print('Stopped for 3 seconds...')
-
 
 
         if self.recovering:
