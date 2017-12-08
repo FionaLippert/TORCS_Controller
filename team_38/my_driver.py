@@ -213,6 +213,7 @@ class MyDriver(Driver):
                 if (t > self.recovered_time + 5) & (sensor_SPEED > 40) & (np.abs(sensor_ANGLE_TO_TRACK_AXIS) < 0.5):
                     self.recovering = False
                     self.warm_up = False
+                    self.init_time = t + 1
                     self.period_end_time = t  # will end evaluation period
                     #print('Recovered and starting new evaulation')
                     #print('+-'*18)
