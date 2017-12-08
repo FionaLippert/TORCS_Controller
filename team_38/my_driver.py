@@ -32,9 +32,9 @@ class MyDriver(Driver):
     stopped_time = 0   # if the car is still for 3 secs go into Recovery mode
     init_time = 0   # only listen to the network after 1 second to initialise the ESN
 
-    SPEED_LIMIT_NORMAL = 100 #110
-    SPEED_LIMIT_CAREFUL = 50 # 50
-    SPEED_LIMIT_OVERTAKE = 120 # 140
+    SPEED_LIMIT_NORMAL = 110 #110
+    SPEED_LIMIT_CAREFUL = 70 # 50
+    SPEED_LIMIT_OVERTAKE = 140 # 140
 
 
     """
@@ -58,8 +58,8 @@ class MyDriver(Driver):
         self.use_team = False
         self.use_overtaking_assistant = True
 
-        self.PATH_TO_ESN = "./trained_nn/evesn1440.pkl"
-        self.PATH_TO_MLP = "./trained_nn/mlp_opponents.pkl"
+        self.PATH_TO_ESN = "./trained_nn/evesn7398.pkl"
+        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-07_14-19-10.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
@@ -275,16 +275,57 @@ class MyDriver(Driver):
             if self.use_overtaking_assistant:
 
                 closest_opponent = np.argmin(carstate.opponents)
-                if (closest_opponent > 5 and closest_opponent < 12) or (closest_opponent > 24 and closest_opponent < 30):
-                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_OVERTAKE # increase speed limit to enable fast overtaking
-                if closest_opponent >= 12 and closest_opponent < 18:
-                    #delta = 0.3
-                    delta = (closest_opponent - 12)/5.0
+                distance_to_opponent = carstate.opponents[closest_opponent]
+                #print(closest_opponent)
+
+                close_opponents_left = carstate.opponents[3:9]
+                left = min(close_opponents_left) < 20
+                close_opponents_front_left = carstate.opponents[9:18] # front left quarter
+                front_left = min(close_opponents_front_left) < 100
+                close_opponents_front_right = carstate.opponents[18:28] # front right quarter
+                front_right = min(close_opponents_front_right) < 100
+                close_opponents_right = carstate.opponents[28:32]
+                right = min(close_opponents_right) < 20
+
+                """
+                overtaking
+                """
+                #if (closest_opponent > 5 and closest_opponent < 12) or (closest_opponent > 24 and closest_opponent < 30):
+                if not (front_left or front_right): # if no opponents are in front
+                    if abs(carstate.angle) < 20 and distance_to_opponent > 5: # assure that overtaking makes sense
+                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_OVERTAKE # increase speed limit to enable fast overtaking
+                        #print('speed up!')
+
+                """
+                get around an opponent on the car's left/front
+                """
+                #if closest_opponent >= 12 and closest_opponent < 18 and carstate.distance_from_center > -0.75:
+                if front_left and not (front_right or right) and carstate.distance_from_center > -0.75:
+
+                    if np.argmin(close_opponents_front_left) < 50:
+                        delta = 0.5
+                    else:
+                        delta = 0.3
+                    #scale = 1/(max(1,distance_to_opponent))
+                    #delta = (np.argmin(close_opponents_front_left))/len(close_opponents_front_left) # dependent on angle: if opponent is in the front, steer stronger
+                    #print('move to the right!')
+                    #print('delta = '+str(delta))
                     adjusted_track_position = min(1, sensor_TRACK_POSITION + delta)
                     sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer away from the opponent
-                if closest_opponent >= 18 and closest_opponent <= 24:
-                    #delta = 0.3
-                    delta = abs(closest_opponent - 24)/6.0
+
+                """
+                get around an opponent on the car's right/front
+                """
+                #if closest_opponent >= 18 and closest_opponent <= 24 and carstate.distance_from_center < 0.75:
+                if front_right and not (front_left or left) and carstate.distance_from_center < 0.75:
+                    if np.argmin(close_opponents_front_right) < 50:
+                        delta = 0.5
+                    else:
+                        delta = 0.3
+                    #scale = 1/(max(1,distance_to_opponent))
+                    delta = abs(np.argmin(close_opponents_front_right) - len(close_opponents_front_right) + 1)/len(close_opponents_front_right)
+                    #print('move to the left!')
+                    #print('delta = '+str(delta))
                     adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
                     sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer away from the opponent
 
