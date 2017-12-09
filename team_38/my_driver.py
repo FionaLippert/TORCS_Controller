@@ -54,12 +54,12 @@ class MyDriver(Driver):
         use_overtaking_assistant: overtaking is supported by motivating the ESN to steer around opponents in front of it
         """
         self.use_simple_driver = False
-        self.use_mlp_opponents = False
+        self.use_mlp_opponents = True
         self.use_team = False
-        self.use_overtaking_assistant = True
+        self.use_overtaking_assistant = False
 
         self.PATH_TO_ESN = "./trained_nn/evesn7398.pkl"
-        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-07_14-19-10.pkl"
+        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-08_14-54-59.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
