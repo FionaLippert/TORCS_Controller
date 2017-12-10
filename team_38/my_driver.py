@@ -55,7 +55,7 @@ class MyDriver(Driver):
         use_overtaking_assistant: overtaking is supported by motivating the ESN to steer around opponents in front of it
         """
         self.use_simple_driver = False
-        self.use_mlp_opponents = False
+        self.use_mlp_opponents = True
         self.use_team = True
         self.use_overtaking_assistant = False
 
