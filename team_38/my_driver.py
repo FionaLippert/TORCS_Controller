@@ -3,26 +3,17 @@
 import math
 from pytocl.driver import Driver
 from pytocl.car import State, Command, MPS_PER_KMH
-from pytocl.controller import CompositeController, ProportionalController, \
-    IntegrationController, DerivativeController
 import neuralNet
-#import pandas as pd
 import numpy as np
 import os.path
-import time
 from sys import stdout
 import os
-import subprocess
 
 class MyDriver(Driver):
 
     RECOVER_MSG = '+-'*6 + ' RECOVERING ' + '-+'*6
 
     last_cur_lap_time = 0
-    period_end_time = -1
-    period_start_dist = 0
-    first_evaluation = True
-    fitness = 0
     off_track = False   # check if off track
     recovering = False   # when recovering let robot take over
     off_time = 0   # time came off track
@@ -64,26 +55,9 @@ class MyDriver(Driver):
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
-
-        # """
-        # Controllers needed for the simple driver
-        # """
-        # self.steering_ctrl = CompositeController(
-        #     ProportionalController(0.4),
-        #     IntegrationController(0.2, integral_limit=1.5),
-        #     DerivativeController(2)
-        # )
-        # self.acceleration_ctrl = CompositeController(
-        #     ProportionalController(3.7),
-        # )
-        # self.data_logger = DataLogWriter() if logdata else None
-
-        # if not os.path.isfile('./pheromones.txt'):
         # clear the pheromones on start up / create file
-
         with open('./team_communication/pheromones.txt', 'w') as file:
             file.write('')
-
 
 
         """
@@ -98,6 +72,7 @@ class MyDriver(Driver):
         self.steering_deviation = 0
 
 
+
     """
     method that determines the driving commands to be passed on to the TORCS server
     (overwrites the drive function the 'Driver' class)
@@ -108,6 +83,7 @@ class MyDriver(Driver):
         # at the begin of the race: determine on which position the car starts
         if self.previous_position == 0:
             self.previous_position = carstate.race_position
+            print('Starting in %s position'%carstate.race_position)
             self.ID = carstate.race_position
             self.team_mate_pos = self.ID + 1 # in the very beginning, both team mates should behave as if they were first
 
@@ -144,8 +120,7 @@ class MyDriver(Driver):
 
         t = carstate.current_lap_time
         if t < self.last_cur_lap_time:
-            # made a lap, adjust timing events accordingly!
-            self.period_end_time -= carstate.last_lap_time
+            # made a lap, adjust timing events accordingly
             self.off_time -= carstate.last_lap_time
             self.recovered_time -= carstate.last_lap_time
             self.stopped_time -= carstate.last_lap_time
@@ -191,7 +166,7 @@ class MyDriver(Driver):
             self.recovering = True
             self.is_stopped = False
             #print(self.RECOVER_MSG)
-            #print('Stopped for 3 seconds...')
+            print('Stopped for 3 seconds...')
 
 
         if self.recovering:
@@ -217,8 +192,7 @@ class MyDriver(Driver):
                     self.recovering = False
                     self.warm_up = False
                     self.init_time = t + 1
-                    self.period_end_time = t  # will end evaluation period
-                    #print('Recovered and starting new evaulation')
+                    print('~~ Recovered! ~~')
                     #print('+-'*18)
 
             else:
@@ -240,15 +214,14 @@ class MyDriver(Driver):
                         self.drop_pheromone(carstate.distance_from_start)
 
                     self.off_time = t
+                    self.off_track = True
 
-                self.off_track = True
 
                 if t > self.off_time + 3:
                     # haven't recovered in 3 seconds
                     # get back on road and start new evaluation
-                    self.fitness -= 100   # penalty
                     self.recovering = True
-                    #print(self.RECOVER_MSG)
+                    print('Off road for 3 seconds...')
 
             else:
                 self.off_track = False
@@ -258,7 +231,7 @@ class MyDriver(Driver):
             """
             apply team strategy: if the car is behind his team mate, try to block opponents comming from behind
             """
-            print(self.is_first)
+            # print(self.is_first)
             if self.use_team and not self.is_first:
 
                 closest_opponent = np.argmin(carstate.opponents)
@@ -349,6 +322,7 @@ class MyDriver(Driver):
 
                 # start a new 'history of states'
                 output = self.esn.predict(sensor_data,continuation=False)
+                print('Loaded ESN from %s'%self.PATH_TO_ESN)
 
 
             """
