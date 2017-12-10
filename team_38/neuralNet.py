@@ -339,6 +339,15 @@ class EchoStateNet():
             w_out = np.load(file)
             self.w_out = w_out
 
+    def reset_states(self):
+        # start from scratch without any memories
+        self.laststates = np.zeros(self.D_reservoir)
+        self.lastinputs = np.zeros(self.D_in)
+        self.lastoutputs = np.zeros(self.D_out)
+
+    def set_last_outputs(self,output):
+        self.lastoutputs = output
+
 """
 load EchoStateNet object from .pkl file and use it to predict outputs
 Args:

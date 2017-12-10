@@ -35,6 +35,7 @@ class MyDriver(Driver):
     SPEED_LIMIT_NORMAL = 110 #110
     SPEED_LIMIT_CAREFUL = 70 # 50
     SPEED_LIMIT_OVERTAKE = 140 # 140
+    SPEED_LIMIT_BLOCKING = 30
 
 
     """
@@ -54,12 +55,12 @@ class MyDriver(Driver):
         use_overtaking_assistant: overtaking is supported by motivating the ESN to steer around opponents in front of it
         """
         self.use_simple_driver = False
-        self.use_mlp_opponents = True
-        self.use_team = False
+        self.use_mlp_opponents = False
+        self.use_team = True
         self.use_overtaking_assistant = False
 
-        self.PATH_TO_ESN = "./trained_nn/evesn7398.pkl"
-        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-08_14-54-59.pkl"
+        self.PATH_TO_ESN = "./trained_nn/evesn10808.pkl"
+        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-09_14-07-57.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
@@ -79,7 +80,7 @@ class MyDriver(Driver):
 
         # if not os.path.isfile('./pheromones.txt'):
         # clear the pheromones on start up / create file
-        with open('./pheromones.txt', 'w') as file:
+        with open('./team_communication/pheromones.txt', 'w') as file:
             file.write('')
 
 
@@ -107,6 +108,7 @@ class MyDriver(Driver):
         if self.previous_position == 0:
             self.previous_position = carstate.race_position
             self.ID = carstate.race_position
+            self.team_mate_pos = self.ID + 1 # in the very beginning, both team mates should behave as if they were first
 
             if self.use_team:
                 self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
@@ -255,8 +257,8 @@ class MyDriver(Driver):
             """
             apply team strategy: if the car is behind his team mate, try to block opponents comming from behind
             """
-            #if self.use_team and not self.is_first:
-            if self.use_team:
+            print(self.is_first)
+            if self.use_team and not self.is_first:
 
                 closest_opponent = np.argmin(carstate.opponents)
                 if closest_opponent > 26:
@@ -358,8 +360,9 @@ class MyDriver(Driver):
             if self.use_mlp_opponents:
                 opponents_data = carstate.opponents
 
-                # if closest opponent is less than 10m away, use mlp to adjust outputs
-                if min(opponents_data) < 50:
+                # if closest opponent is less than 50m away, use mlp to adjust outputs
+                distance_limit = 50.0
+                if min(opponents_data) < distance_limit:
 
                     self.active_mlp = True
                     self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_OVERTAKE
@@ -369,21 +372,24 @@ class MyDriver(Driver):
                     #print(opponents_data)
                     for sensor in opponents_data:
                         # normalize opponents_data to [0,1]
-                        mlp_input.append(sensor/10.0)
+                        mlp_input.append(sensor/distance_limit)
+
 
                     """
                     load MLP if it is not yet available,
                     predict the driving commands
                     """
+
                     try:
-                        output = self.mlp.predict(np.asarray(mlp_input))
+                        change_output = self.mlp.predict(np.asarray(mlp_input))
                     except:
                         self.mlp = neuralNet.restore_MLP(self.PATH_TO_MLP)
-                        output = self.mlp.predict(np.asarray(mlp_input))
+                        change_output = self.mlp.predict(np.asarray(mlp_input))
 
-                    # determine the deviation between ESN and MLP output
-                    self.accel_deviation = abs(output[0]-mlp_input[0])
-                    self.steering_deviation = abs(output[1]-mlp_input[1])
+                    # adjust the ESN output based on the MLP output
+                    output += change_output
+
+                    self.esn.set_last_outputs(output)
 
 
             """
@@ -392,7 +398,7 @@ class MyDriver(Driver):
 
             if self.use_team:
                 # check if near any difficult positions that have been communicated by pheromones:
-                pheromones = np.loadtxt(open('./pheromones.txt', 'rb'), ndmin=1)
+                pheromones = np.loadtxt(open('./team_communication/pheromones.txt', 'rb'), ndmin=1)
 
                 if pheromones.size > 0:
                     for p in pheromones:
@@ -405,8 +411,15 @@ class MyDriver(Driver):
                         self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
 
                 else:
-                    # print('### NORMAL MODE ###')
-                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+                    # if on second position in team, slow down when opponent is directly behind
+                    if not self.is_first:
+                        closest_opponent = np.argmin(carstate.opponents)
+                        if closest_opponent == 0 or closest_opponent == 35:
+                             self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_BLOCKING
+
+                    else:
+                        # print('### NORMAL MODE ###')
+                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
             else:
                 # print('### NORMAL MODE ###')
                 self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
@@ -482,7 +495,7 @@ class MyDriver(Driver):
 
 
     def drop_pheromone(self, dist):
-        with open('./pheromones.txt', 'a') as file:
+        with open('./team_communication/pheromones.txt', 'a') as file:
             file.write(str(dist) + '\n')
         file.close()
         return
