@@ -65,21 +65,22 @@ class MyDriver(Driver):
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
 
-        """
-        Controllers needed for the simple driver
-        """
-        self.steering_ctrl = CompositeController(
-            ProportionalController(0.4),
-            IntegrationController(0.2, integral_limit=1.5),
-            DerivativeController(2)
-        )
-        self.acceleration_ctrl = CompositeController(
-            ProportionalController(3.7),
-        )
-        self.data_logger = DataLogWriter() if logdata else None
+        # """
+        # Controllers needed for the simple driver
+        # """
+        # self.steering_ctrl = CompositeController(
+        #     ProportionalController(0.4),
+        #     IntegrationController(0.2, integral_limit=1.5),
+        #     DerivativeController(2)
+        # )
+        # self.acceleration_ctrl = CompositeController(
+        #     ProportionalController(3.7),
+        # )
+        # self.data_logger = DataLogWriter() if logdata else None
 
         # if not os.path.isfile('./pheromones.txt'):
         # clear the pheromones on start up / create file
+
         with open('./team_communication/pheromones.txt', 'w') as file:
             file.write('')
 
@@ -272,6 +273,8 @@ class MyDriver(Driver):
                     adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
                     sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
 
+                    print('Blocking Opponent')
+
             """
             overtaking strategy
             """
@@ -385,6 +388,7 @@ class MyDriver(Driver):
                     except:
                         self.mlp = neuralNet.restore_MLP(self.PATH_TO_MLP)
                         change_output = self.mlp.predict(np.asarray(mlp_input))
+                        print('Loaded MLP for overtaking')
 
                     # adjust the ESN output based on the MLP output
                     output += change_output
@@ -447,17 +451,6 @@ class MyDriver(Driver):
             """
 
 
-
-            """
-            # full acceleration at the start of the race
-            if carstate.distance_raced<50:
-                accel = 1
-                brake = 0
-                steer = 0
-            """
-
-
-
             """
             Apply Accelrator, Brake and Steering Commands.
             """
@@ -498,6 +491,7 @@ class MyDriver(Driver):
         with open('./team_communication/pheromones.txt', 'a') as file:
             file.write(str(dist) + '\n')
         file.close()
+        print('Pheromone dropped at %s'%dist)
         return
 
 
