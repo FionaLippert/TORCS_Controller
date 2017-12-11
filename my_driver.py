@@ -58,8 +58,8 @@ class MyDriver(Driver):
         self.use_team = False
         self.use_overtaking_assistant = True
 
-        self.PATH_TO_ESN = "./trained_nn/evesn7398.pkl"
-        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-07_14-19-10.pkl"
+        self.PATH_TO_ESN = "./trained_nn/evesn10808.pkl"
+        self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-09_14-07-57.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
 
