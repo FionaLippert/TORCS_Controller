@@ -26,7 +26,9 @@ class MyDriver(Driver):
     SPEED_LIMIT_NORMAL = 110 #110
     SPEED_LIMIT_CAREFUL = 70 # 50
     SPEED_LIMIT_OVERTAKE = 140 # 140
-    SPEED_LIMIT_BLOCKING = 30
+    SPEED_LIMIT_BLOCKING = 50
+
+    team_check = True
 
 
     """
@@ -46,7 +48,7 @@ class MyDriver(Driver):
         use_overtaking_assistant: overtaking is supported by motivating the ESN to steer around opponents in front of it
         """
         self.use_simple_driver = False
-        self.use_mlp_opponents = True
+        self.use_mlp_opponents = False
         self.use_team = True
         self.use_overtaking_assistant = False
 
@@ -98,8 +100,16 @@ class MyDriver(Driver):
             """
             determine position relative to team mate
             """
+            # if not team_check:
+                # check if there are 2 files
+
 
             for root, dirs, files in os.walk("./team_communication/positions"):
+                if len(files) < 2:
+                    # no team mate
+                    self.team_mate_pos = 100
+
+
                 for filename in files:
                     if filename != str(self.ID)+'.txt':
 
@@ -111,6 +121,7 @@ class MyDriver(Driver):
             else:
                 self.is_first = False
 
+            self.team_check = False
 
             if carstate.race_position != self.previous_position:
                 # log the changed race position
@@ -121,6 +132,7 @@ class MyDriver(Driver):
         t = carstate.current_lap_time
         if t < self.last_cur_lap_time:
             # made a lap, adjust timing events accordingly
+            print('Lap completed, in position %s'%carstate.race_position)
             self.off_time -= carstate.last_lap_time
             self.recovered_time -= carstate.last_lap_time
             self.stopped_time -= carstate.last_lap_time
@@ -232,17 +244,16 @@ class MyDriver(Driver):
             apply team strategy: if the car is behind his team mate, try to block opponents comming from behind
             """
             # print(self.is_first)
-            if self.use_team and not self.is_first:
-
+            if self.use_team and not self.is_first and abs(carstate.distance_from_center) < 0.6:
                 closest_opponent = np.argmin(carstate.opponents)
                 if closest_opponent > 26:
                     delta = abs(closest_opponent-35) # get values between 0 (if opponent is directly behind) and 8 (if opponent is at to the car's right )
-                    delta /= 8.0 # scale to values between 0 and 1
+                    delta /= 10.0 # scale to values between 0 and 1
                     # delta = 0.2
                     adjusted_track_position = min(1, sensor_TRACK_POSITION + delta)
                     sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
                 if closest_opponent < 9:
-                    delta = closest_opponent/8.0 # scale to values between 0 (if opponent is directly behind) and 1 (if opponent is at to the car's left )
+                    delta = closest_opponent/10.0 # scale to values between 0 (if opponent is directly behind) and 1 (if opponent is at to the car's left )
                     adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
                     sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
 
@@ -395,9 +406,12 @@ class MyDriver(Driver):
                         if closest_opponent == 0 or closest_opponent == 35:
                              self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_BLOCKING
 
+                        else:
+                            # print('### NORMAL MODE ###')
+                            self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
                     else:
-                        # print('### NORMAL MODE ###')
                         self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+
             else:
                 # print('### NORMAL MODE ###')
                 self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
