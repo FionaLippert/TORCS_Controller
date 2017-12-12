@@ -25,6 +25,7 @@ Basic script for ESN training. To generate a new network and train it on either 
 # start.sh
 The main entry point for connecting the controller with the TORCS system.
 It is linked to run.py
+(To run the offline evolution, please change in run.py the line 'from my_driver import MyDriver' to 'from my_driver_offline_evolution import MyDriver'.
 
 # EA_offline.py
 Contains the offline EA implementation based on the python library DEAP (F. Fortin, F. De Rainville and M. Gardner. DEAP: Evolutionary Algorithms Made Easy. Journal of Machine Learning Research, 13:2171--2175, 2012.)
@@ -42,8 +43,6 @@ Contains functions for ESN training that are used during the ESN reservoir offli
 # my_driver_offline_evolution.py
 A copy of my_driver.py reduced and modified for the offline evolution of ESN reservoirs. All relevant information for fitness determination is logged to a temporary file simulation_log.txt
 
-# start_offline_evolution.py
-This script is called from simulate_and_evaluate.py to start a race using my_driver_offline_evolution.
 
 # offline_evolution_EA/
 Contains the results and logs of the offline evolution of reservoir weights.
