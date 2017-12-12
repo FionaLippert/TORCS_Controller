@@ -3,10 +3,14 @@
 ## my_driver.py
 Contains the driving logic for the TORCS controller. It extends and partly overwrites the provided class `Driver()` in `pytocl/driver.py`
 It implements
+
 - the basic ESN driver, based on the `EchoStateNetwork()` class in `neuralNet.py`. Once the ESN has been loaded from the given .pkl file, it is saved as an property of the current `MyDriver()` instance to reduce file reading and writing costs.
+
 - the simple recovery system
+
 - the MLP controller extension, based on the `MLP()` class in `neuralNet.py`
 	  (can be enabled and disabled by setting the variable 'use_mlp_opponents')
+
 - communication and interaction between team-mates
 	  (can be enabled and disables by setting the variable 'use_team')
 	  All communication logs are read from and written to ./team_communication.
@@ -24,7 +28,9 @@ Basic script for ESN training. To generate a new network and train it on either 
 ## start.sh
 The main entry point for connecting the controller with the TORCS system.
 It is linked to `run.py`.
+
 - To run the offline evolution, please change in `run.py` the line 'from my_driver import MyDriver' to 'from my_driver_offline_evolution import MyDriver'.
+
 - To run the online evolution, please change line 4 to 'from my_driver_evaluator import MyDriver'
 
 ## EA_offline.py
@@ -57,7 +63,7 @@ Evolver script that takes a random network from ./evolver/pool/, mutates it and 
 Script to continuously run TORCS (in text mode) as the evaluator cars race. Iterates over all race config files in ./evolver/race_config/ (each race has four cars, 100 laps). To be run concurrently to `online_evolver.py`
 
 ## run_car.py
-Script to automatically start my_driver_evaluator.py after each race finishes. Unique port number has to be passed (e.g. $ python run_car.py 3001). Need to run four copies of this script at once for each driver in `run_evolutions.py`.
+Script to automatically start my_driver_evaluator.py after each race finishes. Unique port number has to be passed (e.g. `$ python run_car.py 3001`). Need to run four copies of this script at once for each driver in `run_evolutions.py`.
 
 ## ./evolver/
 Contains the gene pool, race config files and folders where unevaluated and evaluated networks are queued.
