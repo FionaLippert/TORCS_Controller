@@ -174,12 +174,11 @@ class MyDriver(Driver):
         sensor_data += list(x)
 
 
-        if self.is_stopped & (t > self.stopped_time + 3) & (not self.recovering):
+        if self.is_stopped & (t > self.stopped_time + 2) & (not self.recovering):
             self.recovering = True
             self.is_stopped = False
             #print(self.RECOVER_MSG)
-            print('Stopped for 3 seconds...')
-
+            print('Stopped for 2 seconds...')
 
         if self.recovering:
 
@@ -200,7 +199,7 @@ class MyDriver(Driver):
                 self.off_track = False
 
                 # considered recovered if moving fast and straightish
-                if (t > self.recovered_time + 5) & (sensor_SPEED > 40) & (np.abs(sensor_ANGLE_TO_TRACK_AXIS) < 0.5):
+                if (t > self.recovered_time + 2) & (sensor_SPEED > 50) & (np.abs(sensor_ANGLE_TO_TRACK_AXIS) < 0.5):
                     self.recovering = False
                     self.warm_up = False
                     self.init_time = t + 1
@@ -498,7 +497,7 @@ class MyDriver(Driver):
 
         if (carstate.speed_x < 3) & (np.abs(carstate.distance_from_center) > 0.7) & (np.abs(angle) > 20/180*np.pi):
 
-            if (self.stuck > 100) & (angle * carstate.distance_from_center < 0.0):
+            if (self.stuck > 50) & (angle * carstate.distance_from_center < 0.0):
                 return True
             else:
                 self.stuck += 1
@@ -527,7 +526,7 @@ class MyDriver(Driver):
                 self.steer(carstate, 0.0, command)
 
                 ACC_LATERAL_MAX = 6400 * 5
-                v_x = 80
+                v_x = self.SPEED_LIMIT_NORMAL
 
                 self.accelerate(carstate, v_x, command)
                 command.gear = 1
