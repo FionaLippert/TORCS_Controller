@@ -28,6 +28,7 @@ class MyDriver(Driver):
     SPEED_LIMIT_OVERTAKE = 140 # 140
     SPEED_LIMIT_BLOCKING = 50
 
+
     team_check = True
 
 
@@ -53,6 +54,7 @@ class MyDriver(Driver):
         self.use_overtaking_assistant = False
 
         self.PATH_TO_ESN = "./trained_nn/evesn10808.pkl"
+        #self.PATH_TO_ESN = "./trained_nn/simple_esn.pkl"
         self.PATH_TO_MLP = "./trained_nn/best_mlp_1_2017-12-09_14-07-57.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
@@ -396,7 +398,8 @@ class MyDriver(Driver):
                             # print('### CAREFUL MODE ###')
                             break
                     else:
-                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+                        if not self.active_mlp:
+                            self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
 
                 else:
                     # if on second position in team, slow down when opponent is directly behind
@@ -406,14 +409,17 @@ class MyDriver(Driver):
                              self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_BLOCKING
 
                         else:
-                            # print('### NORMAL MODE ###')
-                            self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+                            if not self.active_mlp:
+                                # print('### NORMAL MODE ###')
+                                self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
                     else:
-                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+                        if not self.active_mlp:
+                            self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
 
             else:
-                # print('### NORMAL MODE ###')
-                self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
+                if not self.active_mlp:
+                    # print('### NORMAL MODE ###')
+                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
 
 
 
