@@ -32,9 +32,9 @@ class MyDriver(Driver):
     stopped_time = 0   # if the car is still for 3 secs go into Recovery mode
     init_time = 0   # only listen to the network after 1 second to initialise the ESN
 
-    SPEED_LIMIT_NORMAL = 100 #110
-    SPEED_LIMIT_CAREFUL = 50 # 50
-    SPEED_LIMIT_OVERTAKE = 120 # 140
+    SPEED_LIMIT_NORMAL = 110 #110
+    SPEED_LIMIT_OVERTAKE = 140 # 140
+
 
 
     """
@@ -51,21 +51,13 @@ class MyDriver(Driver):
         self.launch_torcs_and_second_driver = False
 
         """
-        these parameters determine which controllers to use
-
-        use_simple_driver: if True, a simple hard coded driving logic is applied
-                            else, the ESN saved at PATH_TO_ESN is used to predict the commands
-        load_w_out_from_file: if True, the readout weights of the ESN are overwritten by those saved at PATH_TO_W_OUT
         use_mlp_opponents: if True, the output of the ESN is adjusted by the Mulit-Layer Perceptron saved at PATH_TO_MLP
         """
-        self.use_simple_driver = False
-        self.load_w_out_from_file = False
         self.use_mlp_opponents = True
-        self.use_team = False
-        self.use_overtaking_strategy = True
 
-        self.PATH_TO_ESN = "./trained_nn/evesn1440.pkl"
-        self.PATH_TO_W_OUT = "./w_out.npy"
+
+        self.PATH_TO_ESN = "./trained_nn/evesn10808.pkl" # for MLP evolution
+        #self.PATH_TO_ESN = "./trained_nn/simple_esn.pkl" # for reservoir evolution
         self.PATH_TO_MLP = "./trained_nn/mlp_opponents.pkl"
 
         self.CURRENT_SPEED_LIMIT =  self.SPEED_LIMIT_NORMAL
@@ -84,10 +76,6 @@ class MyDriver(Driver):
         )
         self.data_logger = DataLogWriter() if logdata else None
 
-        # if not os.path.isfile('./pheromones.txt'):
-        # clear the pheromones on start up / create file
-        with open('./pheromones.txt', 'w') as file:
-            file.write('')
 
 
 
@@ -154,40 +142,6 @@ class MyDriver(Driver):
     """
 
     def drive(self, carstate: State):
-
-        # at the begin of the race: determine on which position the car starts
-        if self.previous_position == 0:
-            self.previous_position = carstate.race_position
-            self.ID = carstate.race_position
-            self.position_file = './team_communication/positions/'+str(self.ID)+'.txt'
-
-            with open(self.position_file, 'w') as file:
-                print(str(self.ID)+":"+str(carstate.race_position))
-                file.write(str(carstate.race_position)+"\n")
-
-
-        if self.use_team:
-            """
-            determine position relative to team mate
-            """
-
-            for root, dirs, files in os.walk("./team_communication/positions"):
-                for filename in files:
-                    if filename != str(self.ID)+'.txt':
-
-                        team_mate_pos = np.loadtxt("./team_communication/positions/"+filename, ndmin=1)
-                        self.team_mate_pos = int(team_mate_pos[-1])
-
-            if carstate.race_position < self.team_mate_pos:
-                self.is_first = True
-            else:
-                self.is_first = False
-
-
-            if carstate.race_position != self.previous_position:
-                # log the changed race position
-                with open(self.position_file, 'a') as file:
-                    file.write(str(carstate.race_position)+"\n")
 
 
         t = carstate.current_lap_time
@@ -269,6 +223,7 @@ class MyDriver(Driver):
                 if (t > self.recovered_time + 5) & (sensor_SPEED > 40) & (np.abs(sensor_ANGLE_TO_TRACK_AXIS) < 0.5):
                     self.recovering = False
                     self.warm_up = False
+                    self.init_time = t + 1
                     self.period_end_time = t  # will end evaluation period
                     #print('Recovered and starting new evaulation')
                     #print('+-'*18)
@@ -286,11 +241,6 @@ class MyDriver(Driver):
             if np.abs(sensor_TRACK_POSITION) > 1:
                 if self.off_track == False:
                     #print("### OFF ROAD ###")
-
-                    if self.use_team:
-                        # write to pheromone.txt warning team mate:
-                        self.drop_pheromone(carstate.distance_from_start)
-
 
                     with open('./simulation_log.txt', 'a') as file:
                         file.write('driver %.0f off road\n'%carstate.race_position)
@@ -315,44 +265,6 @@ class MyDriver(Driver):
 
 
             """
-            apply team strategy: if the car is behind his team mate, try to block opponents comming from behind
-            """
-            #if self.use_team and not self.is_first:
-            if self.use_team:
-
-                closest_opponent = np.argmin(carstate.opponents)
-                if closest_opponent > 26:
-                    delta = abs(closest_opponent-35) # get values between 0 (if opponent is directly behind) and 8 (if opponent is at to the car's right )
-                    delta /= 8.0 # scale to values between 0 and 1
-                    # delta = 0.2
-                    adjusted_track_position = min(1, sensor_TRACK_POSITION + delta)
-                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
-                if closest_opponent < 9:
-                    delta = closest_opponent/8.0 # scale to values between 0 (if opponent is directly behind) and 1 (if opponent is at to the car's left )
-                    adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
-                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer towards the opponent
-
-            """
-            overtaking strategy
-            """
-            if self.use_overtaking_strategy:
-
-                closest_opponent = np.argmin(carstate.opponents)
-                if (closest_opponent > 5 and closest_opponent < 12) or (closest_opponent > 24 and closest_opponent < 30):
-                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_OVERTAKE # increase speed limit to enable fast overtaking
-                if closest_opponent >= 12 and closest_opponent < 18:
-                    #delta = 0.3
-                    delta = (closest_opponent - 12)/5.0
-                    adjusted_track_position = min(1, sensor_TRACK_POSITION + delta)
-                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer away from the opponent
-                if closest_opponent >= 18 and closest_opponent <= 24:
-                    #delta = 0.3
-                    delta = abs(closest_opponent - 24)/6.0
-                    adjusted_track_position = max(-1, sensor_TRACK_POSITION - delta)
-                    sensor_data[1] = adjusted_track_position # adjust sensor input for ESN to motivate the car to steer away from the opponent
-
-
-            """
             load ESN if it is not yet available,
             predict the driving command
             """
@@ -362,10 +274,6 @@ class MyDriver(Driver):
             except:
                 # load ESN from specified path
                 self.esn = neuralNet.restore_ESN(self.PATH_TO_ESN)
-
-                # if desired, set the ESN readout weights to externally given ones
-                if self.load_w_out_from_file:
-                    self.esn.load_w_out(self.PATH_TO_W_OUT)
 
                 # start a new 'history of states'
                 output = self.esn.predict(sensor_data,continuation=False)
@@ -383,8 +291,9 @@ class MyDriver(Driver):
             if self.use_mlp_opponents:
                 opponents_data = carstate.opponents
 
-                # if closest opponent is less than 10m away, use mlp to adjust outputs
-                if min(opponents_data) < 50:
+                # if closest opponent is less than 50m away, use mlp to adjust outputs
+                distance_limit = 50.0
+                if min(opponents_data) < distance_limit:
 
                     self.active_mlp = True
                     self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_OVERTAKE
@@ -394,17 +303,25 @@ class MyDriver(Driver):
                     #print(opponents_data)
                     for sensor in opponents_data:
                         # normalize opponents_data to [0,1]
-                        mlp_input.append(sensor/10.0)
+                        mlp_input.append(sensor/distance_limit)
 
                     """
                     load MLP if it is not yet available,
                     predict the driving commands
                     """
+
                     try:
-                        output = self.mlp.predict(np.asarray(mlp_input))
+                        change_output = self.mlp.predict(np.asarray(mlp_input))
                     except:
                         self.mlp = neuralNet.restore_MLP(self.PATH_TO_MLP)
-                        output = self.mlp.predict(np.asarray(mlp_input))
+                        change_output = self.mlp.predict(np.asarray(mlp_input))
+
+                    # adjust the ESN output based on the MLP output
+                    # output += change_output
+                    output[0] += max(-0.5,min(0.5,change_output[0]))
+                    output[1] += max(-0.5,min(0.5,change_output[1]))
+
+                    self.esn.set_last_outputs(output)
 
                     # determine the deviation between ESN and MLP output
                     self.accel_deviation = abs(output[0]-mlp_input[0])
@@ -414,27 +331,6 @@ class MyDriver(Driver):
             """
             determine if car should accelerate or brake
             """
-
-            if self.use_team:
-                # check if near any difficult positions that have been communicated by pheromones:
-                pheromones = np.loadtxt(open('./pheromones.txt', 'rb'), ndmin=1)
-
-                if pheromones.size > 0:
-                    for p in pheromones:
-                        dist = float(p) - carstate.distance_from_start
-                        if np.abs(dist) < 100:
-                            self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_CAREFUL
-                            # print('### CAREFUL MODE ###')
-                            break
-                    else:
-                        self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
-
-                else:
-                    # print('### NORMAL MODE ###')
-                    self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
-            else:
-                # print('### NORMAL MODE ###')
-                self.CURRENT_SPEED_LIMIT = self.SPEED_LIMIT_NORMAL
 
 
 
@@ -456,16 +352,6 @@ class MyDriver(Driver):
             print('Accelrator: %.2f, Brake: %.2f, Steering: %.2f'%(accel, brake, steer))
             print('Field View:')
             print(''.join('{:3f}, '.format(x) for x in sensor_data[3:]))
-            """
-
-
-
-            """
-            # full acceleration at the start of the race
-            if carstate.distance_raced<50:
-                accel = 1
-                brake = 0
-                steer = 0
             """
 
 
@@ -514,15 +400,19 @@ class MyDriver(Driver):
                 file.write('distance_from_start: 0 \n')
 
             # if overtaking was successful
-            if self.active_mlp and carstate.race_position > self.previous_position:
+            if self.active_mlp and carstate.race_position < self.previous_position:
                 file.write('overtaking successful \n')
+
+            # overtaking of opponent
+            if self.active_mlp and carstate.race_position > self.previous_position:
+                file.write('position lost \n')
 
             #file.write('damage: '+str(carstate.damage)+'\n')
             file.write('distance from center: '+str(carstate.distance_from_center)+'\n')
 
             file.write('distance to opponent: '+str(min(carstate.opponents))+'\n')
 
-            file.write('angle: '+str(carstate.angle)+'\n')
+            file.write('angle to track: '+str(carstate.angle)+'\n')
 
             if self.active_mlp and self.current_damage<carstate.damage:
                 file.write('MLP damage \n')
@@ -530,19 +420,16 @@ class MyDriver(Driver):
                 file.write('MLP d from center: '+str(carstate.distance_from_center)+'\n')
                 file.write('MLP accelerator deviation: '+str(self.accel_deviation)+'\n')
                 file.write('MLP steering deviation: '+str(self.steering_deviation)+'\n')
+                file.write('MLP speed: '+str(carstate.speed_x)+'\n')
+                file.write('MLP angle: '+str(carstate.angle)+'\n')
 
         # save damage and position information for the next simulation step
         self.current_damage = carstate.damage
         self.previous_position = carstate.race_position
 
+
         return command
 
-
-    def drop_pheromone(self, dist):
-        with open('./pheromones.txt', 'a') as file:
-            file.write(str(dist) + '\n')
-        file.close()
-        return
 
 
 

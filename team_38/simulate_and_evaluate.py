@@ -10,10 +10,12 @@ import numpy as np
 tracks = ['practice_eroad.xml','practice_dirt4.xml','practice_etrack2.xml']
 tracks_two_cars = ['quickrace_eroad.xml','quickrace_dirt4.xml','quickrace_etrack2.xml']
 tracks_two_cars_with_bots = ['quickrace_eroad_bots2.xml','quickrace_dirt4_bots2.xml','quickrace_etrack2_bots2.xml']
-tracks_with_bots = ['practice_eroad_bots.xml','quickrace_dirt4_bots.xml','quickrace_etrack2_bots.xml']
+tracks_with_bots = ['quickrace_eroad_bots.xml','quickrace_dirt4_bots.xml','quickrace_etrack2_bots.xml']
 
 
-
+"""
+copy the config file that should currently be used to the given folder
+"""
 def copy_config_file_to_EA_folder(old_file_name, new_file_name,subfolder_name):
 
     src_dir= path.abspath(os.curdir)
@@ -40,7 +42,10 @@ def copy_config_file_to_EA_folder(old_file_name, new_file_name,subfolder_name):
     os.system("chmod 777 "+new_dst_file_name)
 
 
-def simulate_track(track_index, use_bots=False):
+"""
+Run a simulation on a track from the lists above
+"""
+def simulate_track(track_index, use_bots=False, use_test_tracks=False):
 
     # overwrite existing file
     with open('./simulation_log.txt', 'w') as file:
@@ -50,7 +55,16 @@ def simulate_track(track_index, use_bots=False):
     # change config file to use for race
     track_index = min(max(0,track_index),len(tracks)-1)
     os.chdir('./config_files')
-    copy_config_file_to_EA_folder(tracks[track_index],'config.xml','current_config_file')
+    if use_test_tracks:
+        if use_bots:
+            copy_config_file_to_EA_folder(test_tracks_with_bots[track_index],'config.xml','current_config_file')
+        else:
+            copy_config_file_to_EA_folder(test_tracks[track_index],'config.xml','current_config_file')
+    else:
+        if use_bots:
+            copy_config_file_to_EA_folder(tracks_with_bots[track_index],'config.xml','current_config_file')
+        else:
+            copy_config_file_to_EA_folder(tracks[track_index],'config.xml','current_config_file')
     os.chdir('../')
 
     if os.path.isfile('torcs_process.txt'):
@@ -61,7 +75,9 @@ def simulate_track(track_index, use_bots=False):
     if os.path.isfile('torcs_process.txt'):
         os.remove('torcs_process.txt')
 
-
+"""
+Run a simulation with two identical controllers on a track from the lists above
+"""
 def simulate_track_two_cars(track_index, use_bots=False):
 
     # overwrite existing file
@@ -89,7 +105,9 @@ def simulate_track_two_cars(track_index, use_bots=False):
 
 
 
-
+"""
+Run a simulation with only one car on the track that is currently in the config-folder
+"""
 def simulate():
 
     # overwrite existing file
@@ -120,11 +138,16 @@ def get_distance_after_time(t):
     return -1.0 # something went wrong --> penalty
 
 
+"""
+determine all relevant measures to compute the fitness for the given race time t
+"""
 def get_fitness_after_time(t, mlp=False):
     stop = False
-    intermediate_stop = False
+    intermediate_stop1 = False
+    intermediate_stop2 = False
     dist = -1
     overtaking = 0
+    pos_lost = 0
     dist_from_center = 0
     opponents = 0
     stopped = 0
@@ -135,12 +158,18 @@ def get_fitness_after_time(t, mlp=False):
     MLP_dist_from_center = 0
     MLP_accelerator_dev = 0
     MLP_steering_dev = 0
+    MLP_speed = 0
+    MLP_angle = 0
 
     offroad_1 = True
     offroad_2 = True
 
     end_pos = np.infty
-    intermediate_pos = np.infty
+    intermediate_pos1 = np.infty
+    intermediate_pos2 = np.infty
+
+    intermediate_dist1 = -1
+    intermediate_dist2 = -1
 
     with open('./simulation_log.txt', 'r') as file:
         for line in file:
@@ -152,11 +181,19 @@ def get_fitness_after_time(t, mlp=False):
             if line.find("current_lap_time: ") > -1:
                 if float(line.partition(": ")[2]) > t:
                     stop = True
-                if float(line.partition(": ")[2]) > 0.5*t:
-                    intermediate_stop = True
+                if float(line.partition(": ")[2]) > 0.33*t:
+                    intermediate_stop1 = True
+                if float(line.partition(": ")[2]) > 0.66*t:
+                    intermediate_stop2 = True
 
             if stop and line.find("distance_from_start: ") > -1 and dist==-1:
                 dist = float(line.partition(": ")[2])
+
+            if intermediate_stop1 and line.find("distance_from_start: ") > -1 and intermediate_dist1==-1:
+                intermediate_dist1 = float(line.partition(": ")[2])
+
+            if intermediate_stop2 and line.find("distance_from_start: ") > -1 and intermediate_dist2==-1:
+                intermediate_dist2 = float(line.partition(": ")[2])
 
 
             if not stop and line.find("distance from center: ") > -1:
@@ -170,7 +207,7 @@ def get_fitness_after_time(t, mlp=False):
             if not stop and line.find("off road") > -1:
                 offroad += 1
 
-            if not stop and line.find("angle: ") > -1:
+            if not stop and line.find("angle to track: ") > -1:
                 a = abs(float(line.partition(": ")[2]))
                 if a > 30:
                     angle += (a - 30)
@@ -187,6 +224,9 @@ def get_fitness_after_time(t, mlp=False):
 
             if not stop and line.find("MLP damage") > -1:
                 MLP_damage += 1
+
+            if not stop and line.find("MLP speed") > -1:
+                MLP_speed += float(line.partition(": ")[2])
 
             if not stop and line.find("MLP d from center: ") > -1:
                 dfc = abs(float(line.partition(": ")[2]))
@@ -214,21 +254,23 @@ def get_fitness_after_time(t, mlp=False):
             if not stop and line.find("overtaking successful") > -1:
                 overtaking += 1
 
+            if not stop and line.find("position lost") > -1:
+                pos_lost += 1
+
             if not stop and line.find("race position") > -1:
                 end_pos = int(line.partition(": ")[2]) - 1
-                if not intermediate_stop:
-                    intermediate_pos = end_pos
+                if not intermediate_stop1:
+                    intermediate_pos1 = end_pos
+                if not intermediate_stop2:
+                    intermediate_pos2 = end_pos
+
+            if not stop and line.find("MLP angle: ") > -1:
+                a = abs(float(line.partition(": ")[2]))
+                if a > 35:
+                    MLP_angle += (a - 35)
 
 
     if mlp:
-        return overtaking, opponents, MLP_dist_from_center, MLP_damage, MLP_accelerator_dev, MLP_steering_dev, end_pos, intermediate_pos
+        return overtaking, MLP_damage, pos_lost, dist, intermediate_dist1, intermediate_dist2, MLP_speed
     else:
         return dist, dist_from_center, stopped, offroad, angle
-
-
-def repeat_simulations(n):
-    for i in range(n):
-        with open('./simulation_log.txt', 'w') as file:
-            file.write("----------New simulation-----------\n")
-        simulate()
-        print(get_distance_after_time(10.0))

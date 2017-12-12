@@ -145,19 +145,19 @@ def evaluate_MLP(individual, use_bots=False):
     fitness = 0
     for i in range(3):
         try:
-            #simulate_and_evaluate.simulate_track_two_cars(i, use_bots)
             simulate_and_evaluate.simulate_track(i, use_bots)
-            overtaking, opponents, dist_from_center, damage, MLP_accelerator_dev, MLP_steering_dev, end_pos, intermediate_pos = simulate_and_evaluate.get_fitness_after_time(60.0, mlp=True)
-            #fitness += (0.01*dist_from_center + 0.01*opponents + damage + 0.01*MLP_steering_dev + 0.01*MLP_accelerator_dev - 100*overtaking)
+            overtaking, damage, pos_lost, dist, interm_dist1, interm_dist2, speed = simulate_and_evaluate.get_fitness_after_time(60.0, mlp=True)
 
-            fitness += (damage + 0.01*MLP_steering_dev + 0.01*MLP_accelerator_dev + 100*end_position + 100*intermediate_pos - 10*overtaking )
+            fitness += 2*damage + pos_lost - 5*overtaking - 0.005*dist - 0.01*interm_dist2 - 0.05*interm_dist1 - 0.001*speed
 
-            print("overtaking: %.0f"%overtaking)
-            print("accumulated distances from center: %.2f"%dist_from_center)
-            print("opponents: %.2f"%opponents)
-            print("damage: %.0f"%damage)
-            print("accelerator dev: %.2f"%MLP_accelerator_dev)
-            print("steering dev: %.2f"%MLP_steering_dev)
+            print('damage: %.0f'%damage)
+            print('lost: %.0f'%pos_lost)
+            print('overtaking: %.0f'%overtaking)
+            print('dist1: %.2f'%interm_dist1)
+            print('dist2: %.2f'%interm_dist2)
+            print('dist3: %.2f'%dist)
+            print('speed: %.2f'%speed)
+
 
         except Exception as err:
             # write error info to file
@@ -242,7 +242,7 @@ def createToolbox_MLP(use_bots=False):
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
     toolbox.register("mate", tools.cxBlend, alpha=0.5) # ref: Eiben Book
-    toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.3, indpb=0.2)
+    toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.4, indpb=0.2)
     toolbox.register("select", tools.selTournament, tournsize=5)
     if use_bots:
         toolbox.register("evaluate", evaluate_MLP, use_bots=True)
@@ -337,10 +337,10 @@ def main_MLP(use_bots=False):
     pop_size = 20
     population = toolbox.population(n=pop_size)
     mu = pop_size # number of individuals to select for next generation
-    lam = 50 # number of offspring
+    lam = 60 # number of offspring
     cxpb = 0.0 # crossover probability
-    mutpb = 0.8 # mutation probability
-    ngen = 15 # number of generations
+    mutpb = 0.95 # mutation probability
+    ngen = 20 # number of generations
 
 
     """
@@ -486,27 +486,36 @@ def mutGaussian(individual, mu, sigma, indpb):
 ##########################
 t_start=''
 
-for i in range(1):
-    try:
-        hof, stats = main_MLP(use_bots=True)
-    except Exception as err:
-        # write error info to file
-        with open('./error_log.txt', 'a') as f:
-            f.write('-------'+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")+'-------------\n')
-            f.write(str(err))
-            traceback.print_exc(file=f)
-        print('-----------terminated with error!-----------------')
-    """
-    try:
-        hof, stats = main_MLP(use_bots=False)
-    except Exception as err:
-        # write error info to file
-        with open('./error_log.txt', 'a') as f:
-            f.write('-------'+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")+'-------------\n')
-            f.write(str(err))
-            traceback.print_exc(file=f)
-        print('-----------terminated with error!-----------------')
-    """
+"""
+MLP evolution
+"""
+
+try:
+    hof, stats = main_MLP(use_bots=True)
+except Exception as err:
+    # write error info to file
+    with open('./error_log.txt', 'a') as f:
+        f.write('-------'+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")+'-------------\n')
+        f.write(str(err))
+        traceback.print_exc(file=f)
+    print('-----------terminated with error!-----------------')
+
+
+"""
+ESN reservoir evolution
+"""
+
+"""
+try:
+    hof, stats = main()
+except Exception as err:
+    # write error info to file
+    with open('./error_log.txt', 'a') as f:
+        f.write('-------'+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")+'-------------\n')
+        f.write(str(err))
+        traceback.print_exc(file=f)
+    print('-----------terminated with error!-----------------')
+"""
 
 
 
