@@ -50,7 +50,7 @@ class MyDriver(Driver):
         """
         self.use_simple_driver = False
         self.use_mlp_opponents = False
-        self.use_team = True
+        self.use_team = False
         self.use_overtaking_assistant = False
 
         self.PATH_TO_ESN = "./trained_nn/evesn10808.pkl"
